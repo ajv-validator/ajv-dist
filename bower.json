@@ -1,5 +1,5 @@
 {
-  "name": "ajv",
+  "name": "ajv-dist",
   "description": "Another JSON Schema Validator",
   "main": "dist/ajv.min.js",
   "authors": [
