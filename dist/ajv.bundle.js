@@ -4489,7 +4489,11 @@ module.exports = function generate_validate(it, $keyword, $ruleType) {
                   var $sch = $schema[$propertyKey];
                   if ($sch.default !== undefined) {
                     var $passData = $data + it.util.getProperty($propertyKey);
-                    out += '  if (' + ($passData) + ' === undefined) ' + ($passData) + ' = ';
+                    out += '  if (' + ($passData) + ' === undefined ';
+                    if (it.opts.useDefaults == 'empty') {
+                      out += ' || ' + ($passData) + ' === null || ' + ($passData) + ' === \'\' ';
+                    }
+                    out += ' ) ' + ($passData) + ' = ';
                     if (it.opts.useDefaults == 'shared') {
                       out += ' ' + (it.useDefault($sch.default)) + ' ';
                     } else {
@@ -4508,7 +4512,11 @@ module.exports = function generate_validate(it, $keyword, $ruleType) {
                   $sch = arr4[$i += 1];
                   if ($sch.default !== undefined) {
                     var $passData = $data + '[' + $i + ']';
-                    out += '  if (' + ($passData) + ' === undefined) ' + ($passData) + ' = ';
+                    out += '  if (' + ($passData) + ' === undefined ';
+                    if (it.opts.useDefaults == 'empty') {
+                      out += ' || ' + ($passData) + ' === null || ' + ($passData) + ' === \'\' ';
+                    }
+                    out += ' ) ' + ($passData) + ' = ';
                     if (it.opts.useDefaults == 'shared') {
                       out += ' ' + (it.useDefault($sch.default)) + ' ';
                     } else {
