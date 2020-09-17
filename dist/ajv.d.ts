@@ -1,5 +1,12 @@
-import { Schema, SchemaObject, SyncSchemaObject, AsyncSchemaObject, Vocabulary, KeywordDefinition, Options, InstanceOptions, ValidateFunction, ValidateGuard, SyncValidateFunction, AsyncValidateFunction, Logger, ErrorObject, Format, AddedFormat } from "./types";
-import { JSONSchemaType } from "./types/json-schema";
+export { Format, FormatDefinition, AsyncFormatDefinition, KeywordDefinition, Vocabulary, } from "./types";
+export interface Plugin<Opts> {
+    (ajv: Ajv, options?: Opts): Ajv;
+    [prop: string]: any;
+}
+import KeywordCxt from "./compile/context";
+export { KeywordCxt };
+import type { Schema, AnySchema, AnySchemaObject, SchemaObject, AsyncSchema, Vocabulary, KeywordDefinition, Options, InstanceOptions, AnyValidateFunction, ValidateFunction, AsyncValidateFunction, Logger, ErrorObject, Format, AddedFormat } from "./types";
+import type { JSONSchemaType } from "./types/json-schema";
 import { ValidationError, MissingRefError } from "./compile/error_classes";
 import { ValidationRules } from "./compile/rules";
 import { SchemaEnv } from "./compile";
@@ -26,36 +33,24 @@ export default class Ajv {
     static ValidationError: typeof ValidationError;
     static MissingRefError: typeof MissingRefError;
     constructor(opts?: Options);
-    validate(schema: {
-        $async?: never;
-    }, data: unknown): boolean | Promise<unknown>;
-    validate(schema: SyncSchemaObject | boolean, data: unknown): boolean;
-    validate<T>(schema: SyncSchemaObject | JSONSchemaType<T>, data: unknown): data is T;
-    validate(schema: AsyncSchemaObject, data: unknown): Promise<unknown>;
-    validate(schemaKeyRef: Schema | string, data: unknown): boolean | Promise<unknown>;
-    compile(schema: {
-        $async?: never;
-    }, _meta?: boolean): ValidateFunction;
-    compile(schema: SyncSchemaObject | boolean, _meta?: boolean): SyncValidateFunction;
-    compile<T>(schema: SyncSchemaObject | JSONSchemaType<T>, _meta?: boolean): ValidateGuard<T>;
-    compile(schema: AsyncSchemaObject, _meta?: boolean): AsyncValidateFunction;
-    compile(schema: Schema, _meta?: boolean): ValidateFunction;
-    compileAsync(schema: {
-        $async?: never;
-    }, _meta?: boolean): Promise<ValidateFunction>;
-    compileAsync(schema: SyncSchemaObject, meta?: boolean): Promise<SyncValidateFunction>;
-    compileAsync<T>(schema: SyncSchemaObject | JSONSchemaType<T>, _meta?: boolean): Promise<ValidateGuard<T>>;
-    compileAsync(schema: AsyncSchemaObject, meta?: boolean): Promise<AsyncValidateFunction>;
-    compileAsync(schema: SchemaObject, meta?: boolean): Promise<ValidateFunction>;
-    addSchema(schema: Schema | Schema[], // If array is passed, `key` will be ignored
+    validate<T = any>(schema: Schema | JSONSchemaType<T> | string, data: unknown): data is T;
+    validate<T = any>(schema: AsyncSchema, data: unknown): Promise<T>;
+    validate<T = any>(schemaKeyRef: AnySchema | string, data: unknown): data is T | Promise<T>;
+    compile<T = any>(schema: Schema | JSONSchemaType<T>, _meta?: boolean): ValidateFunction<T>;
+    compile<T = any>(schema: AsyncSchema, _meta?: boolean): AsyncValidateFunction<T>;
+    compile<T = any>(schema: AnySchema, _meta?: boolean): AnyValidateFunction<T>;
+    compileAsync<T = any>(schema: SchemaObject | JSONSchemaType<T>, _meta?: boolean): Promise<ValidateFunction<T>>;
+    compileAsync<T = any>(schema: AsyncSchema, meta?: boolean): Promise<AsyncValidateFunction<T>>;
+    compileAsync<T = any>(schema: AnySchemaObject, meta?: boolean): Promise<AnyValidateFunction<T>>;
+    addSchema(schema: AnySchema | AnySchema[], // If array is passed, `key` will be ignored
     key?: string, // Optional schema key. Can be passed to `validate` method instead of schema object or id/ref. One schema per instance can have empty `id` and `key`.
     _meta?: boolean, // true if schema is a meta-schema. Used internally, addMetaSchema should be used instead.
     _validateSchema?: boolean | "log"): Ajv;
-    addMetaSchema(schema: SchemaObject, key?: string, // schema key
+    addMetaSchema(schema: AnySchemaObject, key?: string, // schema key
     _validateSchema?: boolean | "log"): Ajv;
-    validateSchema(schema: Schema, throwOrLogError?: boolean): boolean | Promise<unknown>;
-    getSchema(keyRef: string): ValidateFunction | undefined;
-    removeSchema(schemaKeyRef: Schema | string | RegExp): Ajv;
+    validateSchema(schema: AnySchema, throwOrLogError?: boolean): boolean | Promise<unknown>;
+    getSchema<T = any>(keyRef: string): AnyValidateFunction<T> | undefined;
+    removeSchema(schemaKeyRef: AnySchema | string | RegExp): Ajv;
     addVocabulary(definitions: Vocabulary): Ajv;
     addKeyword(kwdOrDef: string | KeywordDefinition): Ajv;
     getKeyword(keyword: string): KeywordDefinition | boolean;
@@ -63,7 +58,7 @@ export default class Ajv {
     addFormat(name: string, format: Format): Ajv;
     errorsText(errors?: ErrorObject[] | null | undefined, // optional array of validation errors
     { separator, dataVar }?: ErrorsTextOptions): string;
-    $dataMetaSchema(metaSchema: SchemaObject, keywordsJsonPointers: string[]): SchemaObject;
+    $dataMetaSchema(metaSchema: AnySchemaObject, keywordsJsonPointers: string[]): AnySchemaObject;
     private _removeAllSchemas;
     private _addSchema;
     private _checkUnique;

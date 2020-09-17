@@ -3,6 +3,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.KeywordCxt = void 0;
+const context_1 = __importDefault(require("./compile/context"));
+exports.KeywordCxt = context_1.default;
 const cache_1 = __importDefault(require("./cache"));
 const error_classes_1 = require("./compile/error_classes");
 const rules_1 = require("./compile/rules");
@@ -96,13 +99,13 @@ class Ajv {
             v = sch.validate || this._compileSchemaEnv(sch);
         }
         const valid = v(data);
-        if (v.$async !== true)
+        if (!("$async" in v))
             this.errors = v.errors;
         return valid;
     }
     compile(schema, _meta) {
         const sch = this._addSchema(schema, _meta);
-        return sch.validate || this._compileSchemaEnv(sch);
+        return (sch.validate || this._compileSchemaEnv(sch));
     }
     compileAsync(schema, meta) {
         if (typeof this.opts.loadSchema != "function") {
@@ -134,7 +137,7 @@ class Ajv {
         }
         function checkLoaded({ missingSchema: ref, missingRef }) {
             if (this.refs[ref]) {
-                throw new Error(`Schema ${ref} is loaded but ${missingRef} cannot be resolved`);
+                throw new Error(`AnySchema ${ref} is loaded but ${missingRef} cannot be resolved`);
             }
         }
         async function loadMissingSchema(ref) {
@@ -224,7 +227,7 @@ class Ajv {
                 return;
             this.refs[keyRef] = sch;
         }
-        return sch.validate || this._compileSchemaEnv(sch);
+        return (sch.validate || this._compileSchemaEnv(sch));
     }
     // Remove cached schema(s).
     // If no parameter is passed all schemas but meta-schemas are removed.
@@ -557,4 +560,5 @@ function schemaOrData(schema) {
     return { anyOf: [schema, $dataRef] };
 }
 module.exports = Ajv;
+module.exports.default = Ajv;
 //# sourceMappingURL=ajv.js.map
