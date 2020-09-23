@@ -3,22 +3,29 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.KeywordCxt = void 0;
+exports.applySubschema = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
 const context_1 = __importDefault(require("./compile/context"));
 exports.KeywordCxt = context_1.default;
-const cache_1 = __importDefault(require("./cache"));
+var codegen_1 = require("./compile/codegen");
+Object.defineProperty(exports, "_", { enumerable: true, get: function () { return codegen_1._; } });
+Object.defineProperty(exports, "str", { enumerable: true, get: function () { return codegen_1.str; } });
+Object.defineProperty(exports, "stringify", { enumerable: true, get: function () { return codegen_1.stringify; } });
+Object.defineProperty(exports, "nil", { enumerable: true, get: function () { return codegen_1.nil; } });
+Object.defineProperty(exports, "Name", { enumerable: true, get: function () { return codegen_1.Name; } });
+Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function () { return codegen_1.CodeGen; } });
+var subschema_1 = require("./compile/subschema");
+Object.defineProperty(exports, "applySubschema", { enumerable: true, get: function () { return subschema_1.applySubschema; } });
 const error_classes_1 = require("./compile/error_classes");
 const rules_1 = require("./compile/rules");
-const dataType_1 = require("./compile/validate/dataType");
 const compile_1 = require("./compile");
-const codegen_1 = require("./compile/codegen");
+const codegen_2 = require("./compile/codegen");
 const resolve_1 = require("./compile/resolve");
+const dataType_1 = require("./compile/validate/dataType");
 const core_1 = __importDefault(require("./vocabularies/core"));
 const validation_1 = __importDefault(require("./vocabularies/validation"));
 const applicator_1 = __importDefault(require("./vocabularies/applicator"));
 const format_1 = __importDefault(require("./vocabularies/format"));
 const metadata_1 = require("./vocabularies/metadata");
-const fast_json_stable_stringify_1 = __importDefault(require("fast-json-stable-stringify"));
 const util_1 = require("./compile/util");
 const data_json_1 = __importDefault(require("./refs/data.json"));
 const json_schema_draft_07_json_1 = __importDefault(require("./refs/json-schema-draft-07.json"));
@@ -37,36 +44,68 @@ const EXT_SCOPE_NAMES = new Set([
     "func",
     "Error",
 ]);
-const optsDefaults = {
-    strict: true,
-    code: {},
-    loopRequired: Infinity,
-    loopEnum: Infinity,
-    addUsedSchema: true,
+const removedOptions = {
+    errorDataPath: "",
+    format: "`validateFormats: false` can be used instead.",
+    nullable: '"nullable" keyword is supported by default.',
+    jsonPointers: "Deprecated jsPropertySyntax can be used instead.",
+    extendRefs: "Deprecated ignoreKeywordsWithRef can be used instead.",
+    missingRefs: "Pass empty schema with $id that should be ignored to ajv.addSchema.",
+    processCode: "Use option `code: {process: (code, schemaEnv: object) => string}`",
+    sourceCode: "Use option `code: {source: true}`",
+    schemaId: "JSON Schema draft-04 is not supported in Ajv v7.",
+    strictDefaults: "It is default now, see option `strict`.",
+    strictKeywords: "It is default now, see option `strict`.",
+    strictNumbers: "It is default now, see option `strict`.",
+    uniqueItems: '"uniqueItems" keyword is always validated.',
+    unknownFormats: "Disable strict mode or pass `true` to `ajv.addFormat` (or `formats` option).",
+    cache: "Map is used as cache, schema object as key.",
+    serialize: "Map is used as cache, schema object as key.",
 };
+const deprecatedOptions = {
+    ignoreKeywordsWithRef: "",
+    jsPropertySyntax: "",
+    unicode: '"minLength"/"maxLength" account for unicode characters by default.',
+};
+function requiredOptions(o) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+    const strict = (_a = o.strict) !== null && _a !== void 0 ? _a : true;
+    const strictLog = strict ? "log" : false;
+    return {
+        strict,
+        strictTypes: (_b = o.strictTypes) !== null && _b !== void 0 ? _b : strictLog,
+        strictTuples: (_c = o.strictTuples) !== null && _c !== void 0 ? _c : strictLog,
+        code: (_d = o.code) !== null && _d !== void 0 ? _d : {},
+        loopRequired: (_e = o.loopRequired) !== null && _e !== void 0 ? _e : Infinity,
+        loopEnum: (_f = o.loopEnum) !== null && _f !== void 0 ? _f : Infinity,
+        meta: (_g = o.meta) !== null && _g !== void 0 ? _g : true,
+        messages: (_h = o.messages) !== null && _h !== void 0 ? _h : true,
+        inlineRefs: (_j = o.inlineRefs) !== null && _j !== void 0 ? _j : true,
+        addUsedSchema: (_k = o.addUsedSchema) !== null && _k !== void 0 ? _k : true,
+        validateSchema: (_l = o.validateSchema) !== null && _l !== void 0 ? _l : true,
+        validateFormats: (_m = o.validateFormats) !== null && _m !== void 0 ? _m : true,
+    };
+}
 class Ajv {
     constructor(opts = {}) {
-        var _a, _b, _c;
         // shared external scope values for compiled functions
-        this.scope = new codegen_1.ValueScope({ scope: {}, prefixes: EXT_SCOPE_NAMES });
+        this.scope = new codegen_2.ValueScope({ scope: {}, prefixes: EXT_SCOPE_NAMES });
         this.schemas = {};
         this.refs = {};
         this.formats = {};
         this._compilations = new Set();
         this._loading = {};
+        this._cache = new Map();
         opts = this.opts = {
-            ...optsDefaults,
             ...opts,
-            serialize: opts.serialize === false ? (x) => x : (_a = opts.serialize) !== null && _a !== void 0 ? _a : fast_json_stable_stringify_1.default,
-            addUsedSchema: (_b = opts.addUsedSchema) !== null && _b !== void 0 ? _b : true,
-            validateSchema: (_c = opts.validateSchema) !== null && _c !== void 0 ? _c : true,
+            ...requiredOptions(opts),
         };
         this.logger = getLogger(opts.logger);
-        const formatOpt = opts.format;
-        opts.format = false;
-        this._cache = opts.cache || new cache_1.default();
+        const formatOpt = opts.validateFormats;
+        opts.validateFormats = false;
         this.RULES = rules_1.getRules();
-        checkDeprecatedOptions.call(this, opts);
+        checkOptions.call(this, removedOptions, opts, "NOT SUPPORTED");
+        checkOptions.call(this, deprecatedOptions, opts, "DEPRECATED", "warn");
         this._metaOpts = getMetaSchemaOptions.call(this);
         if (opts.formats)
             addInitialFormats.call(this);
@@ -83,7 +122,7 @@ class Ajv {
         if (typeof opts.meta == "object")
             this.addMetaSchema(opts.meta);
         addInitialSchemas.call(this);
-        opts.format = formatOpt;
+        opts.validateFormats = formatOpt;
     }
     validate(schemaKeyRef, // key, ref or schema object
     data // to be validated
@@ -248,14 +287,14 @@ class Ajv {
             case "string": {
                 const sch = getSchEnv.call(this, schemaKeyRef);
                 if (typeof sch == "object")
-                    this._cache.del(sch.cacheKey);
+                    this._cache.delete(sch.schema);
                 delete this.schemas[schemaKeyRef];
                 delete this.refs[schemaKeyRef];
                 return this;
             }
             case "object": {
-                const cacheKey = this.opts.serialize(schemaKeyRef);
-                this._cache.del(cacheKey);
+                const cacheKey = schemaKeyRef;
+                this._cache.delete(cacheKey);
                 let id = schemaKeyRef.$id;
                 if (id) {
                     id = resolve_1.normalizeId(id);
@@ -287,16 +326,27 @@ class Ajv {
         else if (typeof kwdOrDef == "object" && def === undefined) {
             def = kwdOrDef;
             keyword = def.keyword;
+            if (Array.isArray(keyword) && !keyword.length) {
+                throw new Error("addKeywords: keyword must be non-empty array");
+            }
         }
         else {
             throw new Error("invalid addKeywords parameters");
         }
         checkKeyword.call(this, keyword, def);
-        if (def)
-            keywordMetaschema.call(this, def);
-        util_1.eachItem(keyword, (kwd) => {
-            util_1.eachItem(def === null || def === void 0 ? void 0 : def.type, (t) => addRule.call(this, kwd, t, def));
-        });
+        if (!def) {
+            util_1.eachItem(keyword, (kwd) => addRule.call(this, kwd));
+            return this;
+        }
+        keywordMetaschema.call(this, def);
+        const definition = {
+            ...def,
+            type: dataType_1.getJSONTypes(def.type),
+            schemaType: dataType_1.getJSONTypes(def.schemaType),
+        };
+        util_1.eachItem(keyword, definition.type.length === 0
+            ? (k) => addRule.call(this, k, definition)
+            : (k) => definition.type.forEach((t) => addRule.call(this, k, definition, t)));
         return this;
     }
     getKeyword(keyword) {
@@ -330,12 +380,12 @@ class Ajv {
             return "No errors";
         return errors
             .map((e) => `${dataVar}${e.dataPath} ${e.message}`)
-            .reduce((text, msg) => text + msg + separator);
+            .reduce((text, msg) => text + separator + msg);
     }
     $dataMetaSchema(metaSchema, keywordsJsonPointers) {
         const rules = this.RULES.all;
+        metaSchema = JSON.parse(JSON.stringify(metaSchema));
         for (const jsonPointer of keywordsJsonPointers) {
-            metaSchema = JSON.parse(JSON.stringify(metaSchema));
             const segments = jsonPointer.split("/").slice(1); // first segment is an empty string
             let keywords = metaSchema;
             for (const seg of segments)
@@ -360,7 +410,7 @@ class Ajv {
                     delete schemas[keyRef];
                 }
                 else if (sch && !sch.meta) {
-                    this._cache.del(sch.cacheKey);
+                    this._cache.delete(sch.schema);
                     delete schemas[keyRef];
                 }
             }
@@ -370,13 +420,12 @@ class Ajv {
         if (typeof schema != "object" && typeof schema != "boolean") {
             throw new Error("schema must be object or boolean");
         }
-        const cacheKey = this.opts.serialize(schema);
-        let sch = this._cache.get(cacheKey);
-        if (sch)
+        let sch = this._cache.get(schema);
+        if (sch !== undefined)
             return sch;
         const localRefs = resolve_1.getSchemaRefs.call(this, schema);
-        sch = new compile_1.SchemaEnv({ schema, cacheKey, meta, localRefs });
-        this._cache.put(sch.cacheKey, sch);
+        sch = new compile_1.SchemaEnv({ schema, meta, localRefs });
+        this._cache.set(sch.schema, sch);
         const id = sch.baseId;
         if (addSchema && !id.startsWith("#")) {
             // TODO atm it is allowed to overwrite schemas without id (instead of not adding them)
@@ -416,17 +465,12 @@ class Ajv {
 exports.default = Ajv;
 Ajv.ValidationError = error_classes_1.ValidationError;
 Ajv.MissingRefError = error_classes_1.MissingRefError;
-function checkDeprecatedOptions(opts) {
-    if (opts.errorDataPath !== undefined)
-        this.logger.error("NOT SUPPORTED: option errorDataPath");
-    if (opts.schemaId !== undefined)
-        this.logger.error("NOT SUPPORTED: option schemaId");
-    if (opts.uniqueItems !== undefined)
-        this.logger.error("NOT SUPPORTED: option uniqueItems");
-    if (opts.jsPropertySyntax !== undefined)
-        this.logger.warn("DEPRECATED: option jsPropertySyntax");
-    if (opts.unicode !== undefined)
-        this.logger.warn("DEPRECATED: option unicode");
+function checkOptions(checkOpts, options, msg, log = "error") {
+    for (const key in checkOpts) {
+        const opt = key;
+        if (opt in options)
+            this.logger[log](`${msg}: option ${key}. ${checkOpts[opt]}`);
+    }
 }
 function defaultMeta() {
     const { meta } = this.opts;
@@ -446,7 +490,7 @@ function addDefaultMetaSchema() {
     const { $data, meta } = this.opts;
     if ($data)
         this.addMetaSchema(data_json_1.default, data_json_1.default.$id, false);
-    if (meta === false)
+    if (!meta)
         return;
     const metaSchema = $data
         ? this.$dataMetaSchema(json_schema_draft_07_json_1.default, META_SUPPORT_DATA)
@@ -510,13 +554,11 @@ function checkKeyword(keyword, def) {
     });
     if (!def)
         return;
-    if (def.type)
-        util_1.eachItem(def.type, (t) => dataType_1.checkType(t, RULES));
     if (def.$data && !("code" in def || "validate" in def)) {
         throw new Error('$data keyword must have "code" or "validate" function');
     }
 }
-function addRule(keyword, dataType, definition) {
+function addRule(keyword, definition, dataType) {
     var _a;
     const { RULES } = this;
     let ruleGroup = RULES.rules.find(({ type: t }) => t === dataType);
@@ -527,7 +569,14 @@ function addRule(keyword, dataType, definition) {
     RULES.keywords[keyword] = true;
     if (!definition)
         return;
-    const rule = { keyword, definition };
+    const rule = {
+        keyword,
+        definition: {
+            ...definition,
+            type: dataType_1.getJSONTypes(definition.type),
+            schemaType: dataType_1.getJSONTypes(definition.schemaType),
+        },
+    };
     if (definition.before)
         addBeforeRule.call(this, ruleGroup, rule, definition.before);
     else
