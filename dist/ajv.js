@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.applySubschema = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
+exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
 const context_1 = __importDefault(require("./compile/context"));
 exports.KeywordCxt = context_1.default;
 var codegen_1 = require("./compile/codegen");
@@ -13,8 +13,6 @@ Object.defineProperty(exports, "stringify", { enumerable: true, get: function ()
 Object.defineProperty(exports, "nil", { enumerable: true, get: function () { return codegen_1.nil; } });
 Object.defineProperty(exports, "Name", { enumerable: true, get: function () { return codegen_1.Name; } });
 Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function () { return codegen_1.CodeGen; } });
-var subschema_1 = require("./compile/subschema");
-Object.defineProperty(exports, "applySubschema", { enumerable: true, get: function () { return subschema_1.applySubschema; } });
 const error_classes_1 = require("./compile/error_classes");
 const rules_1 = require("./compile/rules");
 const compile_1 = require("./compile");
@@ -118,9 +116,9 @@ class Ajv {
         this.addVocabulary(format_1.default);
         this.addVocabulary(metadata_1.metadataVocabulary);
         this.addVocabulary(metadata_1.contentVocabulary);
+        addDefaultMetaSchema.call(this);
         if (opts.keywords)
             addInitialKeywords.call(this, opts.keywords);
-        addDefaultMetaSchema.call(this);
         if (typeof opts.meta == "object")
             this.addMetaSchema(opts.meta);
         addInitialSchemas.call(this);
@@ -449,6 +447,7 @@ class Ajv {
             this._compileMetaSchema(sch);
         else
             compile_1.compileSchema.call(this, sch);
+        /* istanbul ignore if */
         if (!sch.validate)
             throw new Error("ajv implementation error");
         return sch.validate;

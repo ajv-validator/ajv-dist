@@ -1,4 +1,4 @@
-export { Format, FormatDefinition, AsyncFormatDefinition, KeywordDefinition, KeywordErrorDefinition, CodeKeywordDefinition, MacroKeywordDefinition, FuncKeywordDefinition, Vocabulary, Schema, SchemaObject, AsyncSchema, AnySchema, ValidateFunction, AsyncValidateFunction, ErrorObject, } from "./types";
+export { Format, FormatDefinition, AsyncFormatDefinition, KeywordDefinition, KeywordErrorDefinition, CodeKeywordDefinition, MacroKeywordDefinition, FuncKeywordDefinition, Vocabulary, Schema, SchemaObject, AnySchemaObject, AsyncSchema, AnySchema, ValidateFunction, AsyncValidateFunction, ErrorObject, } from "./types";
 export { SchemaCxt, SchemaObjCxt } from "./compile";
 export interface Plugin<Opts> {
     (ajv: Ajv, options?: Opts): Ajv;
@@ -10,7 +10,6 @@ export { DefinedError } from "./vocabularies/errors";
 export { JSONType } from "./compile/rules";
 export { JSONSchemaType } from "./types/json-schema";
 export { _, str, stringify, nil, Name, Code, CodeGen, CodeGenOptions } from "./compile/codegen";
-export { applySubschema } from "./compile/subschema";
 import type { Schema, AnySchema, AnySchemaObject, SchemaObject, AsyncSchema, Vocabulary, KeywordDefinition, AddedKeywordDefinition, AnyValidateFunction, ValidateFunction, AsyncValidateFunction, ErrorObject, Format, AddedFormat } from "./types";
 import type { JSONSchemaType } from "./types/json-schema";
 import { ValidationError, MissingRefError } from "./compile/error_classes";
