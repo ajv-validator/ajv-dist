@@ -24,6 +24,8 @@ const validation_1 = __importDefault(require("./vocabularies/validation"));
 const applicator_1 = __importDefault(require("./vocabularies/applicator"));
 const format_1 = __importDefault(require("./vocabularies/format"));
 const metadata_1 = require("./vocabularies/metadata");
+const next_1 = __importDefault(require("./vocabularies/next"));
+const unevaluated_1 = __importDefault(require("./vocabularies/unevaluated"));
 const util_1 = require("./compile/util");
 const data_json_1 = __importDefault(require("./refs/data.json"));
 const json_schema_draft_07_json_1 = __importDefault(require("./refs/json-schema-draft-07.json"));
@@ -116,6 +118,10 @@ class Ajv {
         this.addVocabulary(format_1.default);
         this.addVocabulary(metadata_1.metadataVocabulary);
         this.addVocabulary(metadata_1.contentVocabulary);
+        if (opts.next)
+            this.addVocabulary(next_1.default);
+        if (opts.unevaluated)
+            this.addVocabulary(unevaluated_1.default);
         addDefaultMetaSchema.call(this);
         if (opts.keywords)
             addInitialKeywords.call(this, opts.keywords);

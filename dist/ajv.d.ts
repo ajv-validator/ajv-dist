@@ -24,6 +24,8 @@ interface CurrentOptions {
     allowMatchingProperties?: boolean;
     allowUnionTypes?: boolean;
     validateFormats?: boolean;
+    next?: boolean;
+    unevaluated?: boolean;
     $data?: boolean;
     allErrors?: boolean;
     verbose?: boolean;
