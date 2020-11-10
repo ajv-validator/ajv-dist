@@ -24,14 +24,13 @@ interface CurrentOptions {
     allowMatchingProperties?: boolean;
     allowUnionTypes?: boolean;
     validateFormats?: boolean;
-    next?: boolean;
-    unevaluated?: boolean;
+    draft2019?: boolean;
     $data?: boolean;
     allErrors?: boolean;
     verbose?: boolean;
     $comment?: true | ((comment: string, schemaPath?: string, rootSchema?: AnySchemaObject) => unknown);
     formats?: {
-        [name: string]: Format;
+        [Name in string]?: Format;
     };
     keywords?: Vocabulary;
     schemas?: AnySchema[] | {
@@ -42,6 +41,9 @@ interface CurrentOptions {
     removeAdditional?: boolean | "all" | "failing";
     useDefaults?: boolean | "empty";
     coerceTypes?: boolean | "array";
+    next?: boolean;
+    unevaluated?: boolean;
+    dynamicRef?: boolean;
     meta?: SchemaObject | boolean;
     defaultMeta?: string | AnySchemaObject;
     validateSchema?: boolean | "log";

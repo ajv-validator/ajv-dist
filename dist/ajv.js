@@ -26,6 +26,7 @@ const format_1 = __importDefault(require("./vocabularies/format"));
 const metadata_1 = require("./vocabularies/metadata");
 const next_1 = __importDefault(require("./vocabularies/next"));
 const unevaluated_1 = __importDefault(require("./vocabularies/unevaluated"));
+const dynamic_1 = __importDefault(require("./vocabularies/dynamic"));
 const util_1 = require("./compile/util");
 const data_json_1 = __importDefault(require("./refs/data.json"));
 const json_schema_draft_07_json_1 = __importDefault(require("./refs/json-schema-draft-07.json"));
@@ -90,6 +91,7 @@ function requiredOptions(o) {
 }
 class Ajv {
     constructor(opts = {}) {
+        var _a, _b, _c;
         // shared external scope values for compiled functions
         this.scope = new codegen_2.ValueScope({ scope: {}, prefixes: EXT_SCOPE_NAMES });
         this.schemas = {};
@@ -102,6 +104,11 @@ class Ajv {
             ...opts,
             ...requiredOptions(opts),
         };
+        if (opts.draft2019) {
+            (_a = opts.next) !== null && _a !== void 0 ? _a : (opts.next = true);
+            (_b = opts.unevaluated) !== null && _b !== void 0 ? _b : (opts.unevaluated = true);
+            (_c = opts.dynamicRef) !== null && _c !== void 0 ? _c : (opts.dynamicRef = true);
+        }
         this.logger = getLogger(opts.logger);
         const formatOpt = opts.validateFormats;
         opts.validateFormats = false;
@@ -112,6 +119,8 @@ class Ajv {
         if (opts.formats)
             addInitialFormats.call(this);
         this.addVocabulary(["$async"]);
+        if (opts.dynamicRef)
+            this.addVocabulary(dynamic_1.default);
         this.addVocabulary(core_1.default);
         this.addVocabulary(validation_1.default);
         this.addVocabulary(applicator_1.default);
@@ -518,7 +527,8 @@ function addInitialSchemas() {
 function addInitialFormats() {
     for (const name in this.opts.formats) {
         const format = this.opts.formats[name];
-        this.addFormat(name, format);
+        if (format)
+            this.addFormat(name, format);
     }
 }
 function addInitialKeywords(defs) {
