@@ -1,0 +1,21 @@
+{
+  "name": "ajv-dist",
+  "version": "7.0.0-rc.2",
+  "description": "Another JSON Schema Validator: browser bundles",
+  "main": "dist/ajv7.min.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajv-validator/ajv-dist.git"
+  },
+  "keywords": [
+    "JSON",
+    "schema",
+    "validator"
+  ],
+  "author": "Evgeny Poberezkin",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ajv-validator/ajv-dist/issues"
+  },
+  "homepage": "https://github.com/ajv-validator/ajv-dist#readme"
+}
