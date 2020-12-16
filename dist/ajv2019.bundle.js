@@ -5322,7 +5322,7 @@ const ucs2length_1 = require("../../compile/ucs2length");
 const error = {
     message({ keyword, schemaCode }) {
         const comp = keyword === "maxLength" ? "more" : "fewer";
-        return codegen_1.str `should NOT have ${comp} than ${schemaCode} items`;
+        return codegen_1.str `should NOT have ${comp} than ${schemaCode} characters`;
     },
     params: ({ schemaCode }) => codegen_1._ `{limit: ${schemaCode}}`,
 };
