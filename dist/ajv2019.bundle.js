@@ -2544,7 +2544,6 @@ exports.schemaKeywords = void 0;
 const applicability_1 = require("./applicability");
 const dataType_1 = require("./dataType");
 const defaults_1 = require("./defaults");
-const dataType_2 = require("./dataType");
 const keyword_1 = require("./keyword");
 const util_1 = require("../util");
 const _1 = require(".");
@@ -2571,7 +2570,7 @@ function schemaKeywords(it, types, typeErrors, errsCount) {
             iterateKeywords(it, group);
             if (types.length === 1 && types[0] === group.type && typeErrors) {
                 gen.else();
-                dataType_2.reportTypeError(it);
+                dataType_1.reportTypeError(it);
             }
             gen.endIf();
         }
