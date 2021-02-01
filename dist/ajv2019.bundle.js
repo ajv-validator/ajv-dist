@@ -828,7 +828,7 @@ function par(x) {
 },{"./code":1,"./scope":3}],3:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ValueScope = exports.ValueScopeName = exports.Scope = exports.varKinds = void 0;
+exports.ValueScope = exports.ValueScopeName = exports.Scope = exports.varKinds = exports.UsedValueState = void 0;
 const code_1 = require("./code");
 class ValueError extends Error {
     constructor(name) {
@@ -836,6 +836,11 @@ class ValueError extends Error {
         this.value = name.value;
     }
 }
+var UsedValueState;
+(function (UsedValueState) {
+    UsedValueState[UsedValueState["Started"] = 0] = "Started";
+    UsedValueState[UsedValueState["Completed"] = 1] = "Completed";
+})(UsedValueState = exports.UsedValueState || (exports.UsedValueState = {}));
 exports.varKinds = {
     const: new code_1.Name("const"),
     let: new code_1.Name("let"),
@@ -940,11 +945,11 @@ class ValueScope extends Scope {
             const vs = values[prefix];
             if (!vs)
                 continue;
-            const nameSet = (usedValues[prefix] = usedValues[prefix] || new Set());
+            const nameSet = (usedValues[prefix] = usedValues[prefix] || new Map());
             vs.forEach((name) => {
                 if (nameSet.has(name))
                     return;
-                nameSet.add(name);
+                nameSet.set(name, UsedValueState.Started);
                 let c = valueCode(name);
                 if (c) {
                     const def = this.opts.es5 ? exports.varKinds.var : exports.varKinds.const;
@@ -956,6 +961,7 @@ class ValueScope extends Scope {
                 else {
                     throw new ValueError(name);
                 }
+                nameSet.set(name, UsedValueState.Completed);
             });
         }
         return code;
@@ -1508,7 +1514,7 @@ ref // reference to resolve
 ) {
     const p = URI.parse(ref);
     const refPath = resolve_1._getFullPath(p);
-    const baseId = resolve_1.getFullPath(root.baseId);
+    let baseId = resolve_1.getFullPath(root.baseId);
     // TODO `Object.keys(root.schema).length > 0` should not be needed - but removing breaks 2 tests
     if (Object.keys(root.schema).length > 0 && refPath === baseId) {
         return getJsonPointer.call(this, p, root);
@@ -1525,8 +1531,12 @@ ref // reference to resolve
         return;
     if (!schOrRef.validate)
         compileSchema.call(this, schOrRef);
-    if (id === resolve_1.normalizeId(ref))
-        return new SchemaEnv({ schema: schOrRef.schema, root, baseId });
+    if (id === resolve_1.normalizeId(ref)) {
+        const { schema } = schOrRef;
+        if (schema.$id)
+            baseId = resolve_1.resolveUrl(baseId, schema.$id);
+        return new SchemaEnv({ schema, root, baseId });
+    }
     return getJsonPointer.call(this, p, schOrRef);
 }
 exports.resolveSchema = resolveSchema;
@@ -5733,7 +5743,7 @@ function escapeJsonPtr(str) {
 }
 
 },{}],79:[function(require,module,exports){
-/** @license URI.js v4.4.0 (c) 2011 Gary Court. License: http://github.com/garycourt/uri-js */
+/** @license URI.js v4.4.1 (c) 2011 Gary Court. License: http://github.com/garycourt/uri-js */
 (function (global, factory) {
 	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
 	typeof define === 'function' && define.amd ? define(['exports'], factory) :
