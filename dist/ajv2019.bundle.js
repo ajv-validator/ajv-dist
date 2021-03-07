@@ -171,6 +171,7 @@ exports.operators = {
     NOT: new code_1._Code("!"),
     OR: new code_1._Code("||"),
     AND: new code_1._Code("&&"),
+    ADD: new code_1._Code("+"),
 };
 class Node {
     optimizeNodes() {
@@ -222,6 +223,15 @@ class Assign extends Node {
     get names() {
         const names = this.lhs instanceof code_1.Name ? {} : { ...this.lhs.names };
         return addExprNames(names, this.rhs);
+    }
+}
+class AssignOp extends Assign {
+    constructor(lhs, op, rhs, sideEffects) {
+        super(lhs, rhs, sideEffects);
+        this.op = op;
+    }
+    render({ _n }) {
+        return `${this.lhs} ${this.op}= ${this.rhs};` + _n;
     }
 }
 class Label extends Node {
@@ -562,6 +572,10 @@ class CodeGen {
     // assignment code
     assign(lhs, rhs, sideEffects) {
         return this._leafNode(new Assign(lhs, rhs, sideEffects));
+    }
+    // `+=` code
+    add(lhs, rhs) {
+        return this._leafNode(new AssignOp(lhs, exports.operators.ADD, rhs));
     }
     // appends passed SafeExpr to code or executes Block
     code(c) {
@@ -1361,7 +1375,7 @@ function ajvErrorObject(cxt, error) {
 },{"./codegen":2,"./names":8}],7:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resolveSchema = exports.resolveRef = exports.compileSchema = exports.SchemaEnv = void 0;
+exports.resolveSchema = exports.getCompilingSchema = exports.resolveRef = exports.compileSchema = exports.SchemaEnv = void 0;
 const codegen_1 = require("./codegen");
 const error_classes_1 = require("./error_classes");
 const names_1 = require("./names");
@@ -1418,6 +1432,7 @@ function compileSchema(sch) {
         dataPathArr: [codegen_1.nil],
         dataLevel: 0,
         dataTypes: [],
+        definedProperties: new Set(),
         topSchemaRef: gen.scopeValue("schema", this.opts.code.source === true
             ? { ref: sch.schema, code: codegen_1.stringify(sch.schema) }
             : { ref: sch.schema }),
@@ -1512,6 +1527,7 @@ function getCompilingSchema(schEnv) {
             return sch;
     }
 }
+exports.getCompilingSchema = getCompilingSchema;
 function sameSchemaEnv(s1, s2) {
     return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
 }
@@ -1613,6 +1629,11 @@ const names = {
     // "globals"
     self: new codegen_1.Name("self"),
     scope: new codegen_1.Name("scope"),
+    // JTD serialize/parse name for JSON string and position
+    json: new codegen_1.Name("json"),
+    jsonPos: new codegen_1.Name("jsonPos"),
+    jsonLen: new codegen_1.Name("jsonLen"),
+    jsonPart: new codegen_1.Name("jsonPart"),
 };
 exports.default = names;
 
@@ -1874,6 +1895,7 @@ function extendSubschemaData(subschema, it, { dataProp, dataPropType: dpType, da
         subschema.data = _nextData;
         subschema.dataLevel = it.dataLevel + 1;
         subschema.dataTypes = [];
+        it.definedProperties = new Set();
         subschema.parentData = it.data;
         subschema.dataNames = [...it.dataNames, _nextData];
     }
@@ -1930,7 +1952,7 @@ exports.default = ucs2length;
 },{}],13:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setEvaluated = exports.evaluatedPropsToName = exports.mergeEvaluated = exports.eachItem = exports.unescapeJsonPointer = exports.escapeJsonPointer = exports.escapeFragment = exports.unescapeFragment = exports.schemaRefOrVal = exports.schemaHasRulesButRef = exports.schemaHasRules = exports.checkUnknownRules = exports.alwaysValidSchema = exports.toHash = void 0;
+exports.func = exports.setEvaluated = exports.evaluatedPropsToName = exports.mergeEvaluated = exports.eachItem = exports.unescapeJsonPointer = exports.escapeJsonPointer = exports.escapeFragment = exports.unescapeFragment = exports.schemaRefOrVal = exports.schemaHasRulesButRef = exports.schemaHasRules = exports.checkUnknownRules = exports.alwaysValidSchema = exports.toHash = void 0;
 const codegen_1 = require("./codegen");
 const validate_1 = require("./validate");
 // TODO refactor to use Set
@@ -2068,6 +2090,13 @@ function setEvaluated(gen, props, ps) {
     Object.keys(ps).forEach((p) => gen.assign(codegen_1._ `${props}${codegen_1.getProperty(p)}`, true));
 }
 exports.setEvaluated = setEvaluated;
+function func(gen, f) {
+    return gen.scopeValue("func", {
+        ref: f,
+        code: f.code,
+    });
+}
+exports.func = func;
 
 },{"./codegen":2,"./validate":18}],14:[function(require,module,exports){
 "use strict";
@@ -2084,7 +2113,8 @@ function shouldUseGroup(schema, group) {
 exports.shouldUseGroup = shouldUseGroup;
 function shouldUseRule(schema, rule) {
     var _a;
-    return (schema[rule.keyword] !== undefined || ((_a = rule.definition.implements) === null || _a === void 0 ? void 0 : _a.some((kwd) => schema[kwd] !== undefined)));
+    return (schema[rule.keyword] !== undefined ||
+        ((_a = rule.definition.implements) === null || _a === void 0 ? void 0 : _a.some((kwd) => schema[kwd] !== undefined)));
 }
 exports.shouldUseRule = shouldUseRule;
 
@@ -2808,6 +2838,8 @@ const $dataRefSchema = require("./refs/data.json");
 const META_IGNORE_OPTIONS = ["removeAdditional", "useDefaults", "coerceTypes"];
 const EXT_SCOPE_NAMES = new Set([
     "validate",
+    "serialize",
+    "parse",
     "wrapper",
     "root",
     "schema",
@@ -3829,13 +3861,8 @@ const def = {
             let definedProp;
             if (props.length > 8) {
                 // TODO maybe an option instead of hard-coded 8?
-                const hasProp = gen.scopeValue("func", {
-                    // eslint-disable-next-line @typescript-eslint/unbound-method
-                    ref: Object.prototype.hasOwnProperty,
-                    code: codegen_1._ `Object.prototype.hasOwnProperty`,
-                });
                 const propsSchema = util_1.schemaRefOrVal(it, parentSchema.properties, "properties");
-                definedProp = codegen_1._ `${hasProp}.call(${propsSchema}, ${key})`;
+                definedProp = code_1.isOwnProperty(gen, propsSchema, key);
             }
             else if (props.length) {
                 definedProp = codegen_1.or(...props.map((p) => codegen_1._ `${key} === ${p}`));
@@ -4042,7 +4069,7 @@ exports.error = {
     params: ({ params: { property, depsCount, deps, missingProperty } }) => codegen_1._ `{property: ${property},
     missingProperty: ${missingProperty},
     depsCount: ${depsCount},
-    deps: ${deps}}`,
+    deps: ${deps}}`, // TODO change to reference
 };
 const def = {
     keyword: "dependencies",
@@ -4075,7 +4102,7 @@ function validatePropertyDeps(cxt, propertyDeps = cxt.schema) {
         const deps = propertyDeps[prop];
         if (deps.length === 0)
             continue;
-        const hasProperty = code_1.propertyInData(data, prop, it.opts.ownProperties);
+        const hasProperty = code_1.propertyInData(gen, data, prop, it.opts.ownProperties);
         cxt.setParams({
             property: prop,
             depsCount: deps.length,
@@ -4102,7 +4129,7 @@ function validateSchemaDeps(cxt, schemaDeps = cxt.schema) {
     for (const prop in schemaDeps) {
         if (util_1.alwaysValidSchema(it, schemaDeps[prop]))
             continue;
-        gen.if(code_1.propertyInData(data, prop, it.opts.ownProperties), () => {
+        gen.if(code_1.propertyInData(gen, data, prop, it.opts.ownProperties), () => {
             const schCxt = cxt.subschema({ keyword, schemaProp: prop }, valid);
             cxt.mergeValidEvaluated(schCxt, valid);
         }, () => gen.var(valid, true) // TODO var
@@ -4459,6 +4486,9 @@ const def = {
             additionalProperties_1.default.code(new context_1.default(it, additionalProperties_1.default, "additionalProperties"));
         }
         const allProps = code_1.allSchemaProperties(schema);
+        for (const prop of allProps) {
+            it.definedProperties.add(prop);
+        }
         if (it.opts.unevaluated && allProps.length && it.props !== true) {
             it.props = util_1.mergeEvaluated.props(gen, util_1.toHash(allProps), it.props);
         }
@@ -4471,12 +4501,13 @@ const def = {
                 applyPropertySchema(prop);
             }
             else {
-                gen.if(code_1.propertyInData(data, prop, it.opts.ownProperties));
+                gen.if(code_1.propertyInData(gen, data, prop, it.opts.ownProperties));
                 applyPropertySchema(prop);
                 if (!it.allErrors)
                     gen.else().var(valid, true);
                 gen.endIf();
             }
+            cxt.it.definedProperties.add(prop);
             cxt.ok(valid);
         }
         function hasDefault(prop) {
@@ -4549,21 +4580,21 @@ exports.default = def;
 },{"../../compile/validate":18}],47:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateUnion = exports.validateArray = exports.usePattern = exports.callValidateCode = exports.schemaProperties = exports.allSchemaProperties = exports.noPropertyInData = exports.propertyInData = exports.reportMissingProp = exports.checkMissingProp = exports.checkReportMissingProp = void 0;
+exports.validateUnion = exports.validateArray = exports.usePattern = exports.callValidateCode = exports.schemaProperties = exports.allSchemaProperties = exports.noPropertyInData = exports.propertyInData = exports.isOwnProperty = exports.hasPropFunc = exports.reportMissingProp = exports.checkMissingProp = exports.checkReportMissingProp = void 0;
 const codegen_1 = require("../compile/codegen");
 const util_1 = require("../compile/util");
 const subschema_1 = require("../compile/subschema");
 const names_1 = require("../compile/names");
 function checkReportMissingProp(cxt, prop) {
     const { gen, data, it } = cxt;
-    gen.if(noPropertyInData(data, prop, it.opts.ownProperties), () => {
+    gen.if(noPropertyInData(gen, data, prop, it.opts.ownProperties), () => {
         cxt.setParams({ missingProperty: codegen_1._ `${prop}` }, true);
         cxt.error();
     });
 }
 exports.checkReportMissingProp = checkReportMissingProp;
-function checkMissingProp({ data, it: { opts } }, properties, missing) {
-    return codegen_1.or(...properties.map((prop) => codegen_1._ `${noPropertyInData(data, prop, opts.ownProperties)} && (${missing} = ${prop})`));
+function checkMissingProp({ gen, data, it: { opts } }, properties, missing) {
+    return codegen_1.or(...properties.map((prop) => codegen_1._ `${noPropertyInData(gen, data, prop, opts.ownProperties)} && (${missing} = ${prop})`));
 }
 exports.checkMissingProp = checkMissingProp;
 function reportMissingProp(cxt, missing) {
@@ -4571,17 +4602,26 @@ function reportMissingProp(cxt, missing) {
     cxt.error();
 }
 exports.reportMissingProp = reportMissingProp;
-function isOwnProperty(data, property) {
-    return codegen_1._ `Object.prototype.hasOwnProperty.call(${data}, ${property})`;
+function hasPropFunc(gen) {
+    return gen.scopeValue("func", {
+        // eslint-disable-next-line @typescript-eslint/unbound-method
+        ref: Object.prototype.hasOwnProperty,
+        code: codegen_1._ `Object.prototype.hasOwnProperty`,
+    });
 }
-function propertyInData(data, property, ownProperties) {
+exports.hasPropFunc = hasPropFunc;
+function isOwnProperty(gen, data, property) {
+    return codegen_1._ `${hasPropFunc(gen)}.call(${data}, ${property})`;
+}
+exports.isOwnProperty = isOwnProperty;
+function propertyInData(gen, data, property, ownProperties) {
     const cond = codegen_1._ `${data}${codegen_1.getProperty(property)} !== undefined`;
-    return ownProperties ? codegen_1._ `${cond} && ${isOwnProperty(data, property)}` : cond;
+    return ownProperties ? codegen_1._ `${cond} && ${isOwnProperty(gen, data, property)}` : cond;
 }
 exports.propertyInData = propertyInData;
-function noPropertyInData(data, property, ownProperties) {
+function noPropertyInData(gen, data, property, ownProperties) {
     const cond = codegen_1._ `${data}${codegen_1.getProperty(property)} === undefined`;
-    return ownProperties ? codegen_1._ `${cond} || !${isOwnProperty(data, property)}` : cond;
+    return ownProperties ? codegen_1._ `${cond} || !${isOwnProperty(gen, data, property)}` : cond;
 }
 exports.noPropertyInData = noPropertyInData;
 function allSchemaProperties(schemaMap) {
@@ -5506,6 +5546,7 @@ exports.default = def;
 Object.defineProperty(exports, "__esModule", { value: true });
 const code_1 = require("../code");
 const codegen_1 = require("../../compile/codegen");
+const validate_1 = require("../../compile/validate");
 const error = {
     message: ({ params: { missingProperty } }) => codegen_1.str `should have required property '${missingProperty}'`,
     params: ({ params: { missingProperty } }) => codegen_1._ `{missingProperty: ${missingProperty}}`,
@@ -5526,6 +5567,17 @@ const def = {
             allErrorsMode();
         else
             exitOnErrorMode();
+        if (opts.strictRequired) {
+            const props = cxt.parentSchema.properties;
+            const { definedProperties } = cxt.it;
+            for (const requiredKey of schema) {
+                if ((props === null || props === void 0 ? void 0 : props[requiredKey]) === undefined && !definedProperties.has(requiredKey)) {
+                    const schemaPath = it.schemaEnv.baseId + it.errSchemaPath;
+                    const msg = `required property "${requiredKey}" is not defined at "${schemaPath}" (strictRequired)`;
+                    validate_1.checkStrictMode(it, msg, it.opts.strictRequired);
+                }
+            }
+        }
         function allErrorsMode() {
             if (useLoop || $data) {
                 cxt.block$data(codegen_1.nil, loopAllRequired);
@@ -5552,13 +5604,13 @@ const def = {
         function loopAllRequired() {
             gen.forOf("prop", schemaCode, (prop) => {
                 cxt.setParams({ missingProperty: prop });
-                gen.if(code_1.noPropertyInData(data, prop, opts.ownProperties), () => cxt.error());
+                gen.if(code_1.noPropertyInData(gen, data, prop, opts.ownProperties), () => cxt.error());
             });
         }
         function loopUntilMissing(missing, valid) {
             cxt.setParams({ missingProperty: missing });
             gen.forOf(missing, schemaCode, () => {
-                gen.assign(valid, code_1.propertyInData(data, missing, opts.ownProperties));
+                gen.assign(valid, code_1.propertyInData(gen, data, missing, opts.ownProperties));
                 gen.if(codegen_1.not(valid), () => {
                     cxt.error();
                     gen.break();
@@ -5569,7 +5621,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2,"../code":47}],76:[function(require,module,exports){
+},{"../../compile/codegen":2,"../../compile/validate":18,"../code":47}],76:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const dataType_1 = require("../../compile/validate/dataType");
