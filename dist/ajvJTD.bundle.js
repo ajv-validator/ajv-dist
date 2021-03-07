@@ -1710,25 +1710,6 @@ function parseCode(cxt) {
         parseEmpty(cxt);
 }
 const parseBoolean = parseBooleanToken(true, parseBooleanToken(false, jsonSyntaxError));
-// function parseEmptyCode(cxt: ParseCxt): void {
-//   const {gen, data, char: c} = cxt
-//   skipWhitespace(cxt)
-//   gen.assign(c, _`${N.json}[${N.jsonPos}]`)
-//   gen.if(_`${c} === "t" || ${c} === "f"`)
-//   parseBoolean(cxt)
-//   gen.elseIf(_`${c} === "n"`)
-//   tryParseToken(cxt, "null", jsonSyntaxError, () => gen.assign(data, null))
-//   gen.elseIf(_`${c} === '"'`)
-//   parseString(cxt)
-//   gen.elseIf(_`${c} === "["`)
-//   parseElements({...cxt, schema: {elements: {}}})
-//   gen.elseIf(_`${c} === "{"`)
-//   parseValues({...cxt, schema: {values: {}}})
-//   gen.else()
-//   parseNumber(cxt)
-//   gen.endIf()
-//   skipWhitespace(cxt)
-// }
 function parseNullable(cxt, parseForm) {
     const { gen, schema, data } = cxt;
     if (!schema.nullable)
@@ -1760,14 +1741,16 @@ function tryParseItems(cxt, endToken, block) {
     const { gen } = cxt;
     gen.for(codegen_1._ `;${names_1.default.jsonPos}<${names_1.default.jsonLen} && ${jsonSlice(1)}!==${endToken};`, () => {
         block();
-        tryParseToken(cxt, ",", () => gen.break());
+        tryParseToken(cxt, ",", () => gen.break(), hasItem);
     });
+    function hasItem() {
+        tryParseToken(cxt, endToken, () => { }, jsonSyntaxError);
+    }
 }
 function parseKeyValue(cxt, schema) {
     const { gen } = cxt;
     const key = gen.let("key");
     parseString({ ...cxt, data: key });
-    checkDuplicateProperty(cxt, key);
     parseToken(cxt, ":");
     parsePropertyValue(cxt, key, schema);
 }
@@ -1813,12 +1796,6 @@ function parseSchemaProperties(cxt, discriminator) {
     parseItems(cxt, "}", () => {
         const key = gen.let("key");
         parseString({ ...cxt, data: key });
-        if (discriminator) {
-            gen.if(codegen_1._ `${key} !== ${discriminator}`, () => checkDuplicateProperty(cxt, key));
-        }
-        else {
-            checkDuplicateProperty(cxt, key);
-        }
         parseToken(cxt, ":");
         gen.if(false);
         parseDefinedProperty(cxt, key, properties);
@@ -1849,9 +1826,6 @@ function parseDefinedProperty(cxt, key, schemas = {}) {
         gen.elseIf(codegen_1._ `${key} === ${prop}`);
         parsePropertyValue(cxt, key, schemas[prop]);
     }
-}
-function checkDuplicateProperty({ gen, data }, key) {
-    gen.if(code_1.isOwnProperty(gen, data, key), () => gen.throw(codegen_1._ `new Error("JSON: duplicate property " + ${key})`));
 }
 function parsePropertyValue(cxt, key, schema) {
     parseCode({ ...cxt, schema, data: codegen_1._ `${cxt.data}[${key}]` });
@@ -4178,13 +4152,14 @@ function parseJson(s, pos) {
             return undefined;
         }
         endPos = +matches[1];
+        const c = s[endPos];
         s = s.slice(0, endPos);
         parseJson.position = pos + endPos;
         try {
             return JSON.parse(s);
         }
         catch (e1) {
-            parseJson.message = `unexpected token ${s[endPos]}`;
+            parseJson.message = `unexpected token ${c}`;
             return undefined;
         }
     }
@@ -4247,7 +4222,8 @@ function parseJsonNumber(s, pos, maxDigits) {
         return digit;
     }
     function errorMessage() {
-        parseJson.message = pos < s.length ? `unexpected token ${s[pos]}` : "unexpected end";
+        parseJsonNumber.position = pos;
+        parseJsonNumber.message = pos < s.length ? `unexpected token ${s[pos]}` : "unexpected end";
     }
 }
 exports.parseJsonNumber = parseJsonNumber;
@@ -4264,40 +4240,42 @@ const escapedChars = {
     "/": "/",
     "\\": "\\",
 };
-const A_CODE = "a".charCodeAt(0);
+const CODE_A = "a".charCodeAt(0);
+const CODE_0 = "0".charCodeAt(0);
 function parseJsonString(s, pos) {
     let str = "";
     let c;
     parseJsonString.message = undefined;
     // eslint-disable-next-line no-constant-condition, @typescript-eslint/no-unnecessary-condition
     while (true) {
-        c = s[pos];
-        pos++;
+        c = s[pos++];
         if (c === '"')
             break;
         if (c === "\\") {
             c = s[pos];
             if (c in escapedChars) {
                 str += escapedChars[c];
+                pos++;
             }
             else if (c === "u") {
+                pos++;
                 let count = 4;
                 let code = 0;
                 while (count--) {
                     code <<= 4;
                     c = s[pos].toLowerCase();
                     if (c >= "a" && c <= "f") {
-                        c += c.charCodeAt(0) - A_CODE + 10;
+                        code += c.charCodeAt(0) - CODE_A + 10;
                     }
                     else if (c >= "0" && c <= "9") {
-                        code += +c;
+                        code += c.charCodeAt(0) - CODE_0;
                     }
                     else if (c === undefined) {
                         errorMessage("unexpected end");
                         return undefined;
                     }
                     else {
-                        errorMessage(`unexpected token ${s[pos]}`);
+                        errorMessage(`unexpected token ${c}`);
                         return undefined;
                     }
                     pos++;
@@ -4305,17 +4283,22 @@ function parseJsonString(s, pos) {
                 str += String.fromCharCode(code);
             }
             else {
-                errorMessage(`unexpected token ${s[pos]}`);
+                errorMessage(`unexpected token ${c}`);
                 return undefined;
             }
-            pos++;
         }
         else if (c === undefined) {
             errorMessage("unexpected end");
             return undefined;
         }
         else {
-            str += c;
+            if (c.charCodeAt(0) >= 0x20) {
+                str += c;
+            }
+            else {
+                errorMessage(`unexpected token ${c}`);
+                return undefined;
+            }
         }
     }
     parseJsonString.position = pos;
