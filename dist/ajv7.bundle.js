@@ -1063,9 +1063,18 @@ class KeywordCxt {
         const { schemaCode } = this;
         this.fail(codegen_1._ `${schemaCode} !== undefined && (${codegen_1.or(this.invalid$data(), condition)})`);
     }
-    error(append) {
+    error(append, errorParams, errorPaths) {
+        if (errorParams) {
+            this.setParams(errorParams);
+            this._error(append, errorPaths);
+            this.setParams({});
+            return;
+        }
+        this._error(append, errorPaths);
+    }
+    _error(append, errorPaths) {
         ;
-        (append ? errors_1.reportExtraError : errors_1.reportError)(this, this.def.error);
+        (append ? errors_1.reportExtraError : errors_1.reportError)(this, this.def.error, errorPaths);
     }
     $dataError() {
         errors_1.reportError(this, this.def.$dataError || errors_1.keyword$DataError);
@@ -1255,6 +1264,7 @@ module.exports = {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extendErrors = exports.resetErrorsCount = exports.reportExtraError = exports.reportError = exports.keyword$DataError = exports.keywordError = void 0;
 const codegen_1 = require("./codegen");
+const subschema_1 = require("./subschema");
 const names_1 = require("./names");
 exports.keywordError = {
     message: ({ keyword }) => codegen_1.str `should pass "${keyword}" keyword validation`,
@@ -1264,10 +1274,10 @@ exports.keyword$DataError = {
         ? codegen_1.str `"${keyword}" keyword must be ${schemaType} ($data)`
         : codegen_1.str `"${keyword}" keyword is invalid ($data)`,
 };
-function reportError(cxt, error = exports.keywordError, overrideAllErrors) {
+function reportError(cxt, error = exports.keywordError, errorPaths, overrideAllErrors) {
     const { it } = cxt;
     const { gen, compositeRule, allErrors } = it;
-    const errObj = errorObjectCode(cxt, error);
+    const errObj = errorObjectCode(cxt, error, errorPaths);
     if (overrideAllErrors !== null && overrideAllErrors !== void 0 ? overrideAllErrors : (compositeRule || allErrors)) {
         addError(gen, errObj);
     }
@@ -1276,10 +1286,10 @@ function reportError(cxt, error = exports.keywordError, overrideAllErrors) {
     }
 }
 exports.reportError = reportError;
-function reportExtraError(cxt, error = exports.keywordError) {
+function reportExtraError(cxt, error = exports.keywordError, errorPaths) {
     const { it } = cxt;
     const { gen, compositeRule, allErrors } = it;
-    const errObj = errorObjectCode(cxt, error);
+    const errObj = errorObjectCode(cxt, error, errorPaths);
     addError(gen, errObj);
     if (!(compositeRule || allErrors)) {
         returnErrors(it, names_1.default.vErrors);
@@ -1298,7 +1308,7 @@ function extendErrors({ gen, keyword, schemaValue, data, errsCount, it, }) {
     const err = gen.name("err");
     gen.forRange("i", errsCount, names_1.default.errors, (i) => {
         gen.const(err, codegen_1._ `${names_1.default.vErrors}[${i}]`);
-        gen.if(codegen_1._ `${err}.dataPath === undefined`, () => gen.assign(codegen_1._ `${err}.dataPath`, codegen_1.strConcat(names_1.default.dataPath, it.errorPath)));
+        gen.if(codegen_1._ `${err}.instancePath === undefined`, () => gen.assign(codegen_1._ `${err}.instancePath`, codegen_1.strConcat(names_1.default.instancePath, it.errorPath)));
         gen.assign(codegen_1._ `${err}.schemaPath`, codegen_1.str `${it.errSchemaPath}/${keyword}`);
         if (it.opts.verbose) {
             gen.assign(codegen_1._ `${err}.schema`, schemaValue);
@@ -1330,49 +1340,50 @@ const E = {
     message: new codegen_1.Name("message"),
     schema: new codegen_1.Name("schema"),
     parentSchema: new codegen_1.Name("parentSchema"),
-    // JTD error properties
-    instancePath: new codegen_1.Name("instancePath"),
 };
-function errorObjectCode(cxt, error) {
-    const { createErrors, opts } = cxt.it;
+function errorObjectCode(cxt, error, errorPaths) {
+    const { createErrors } = cxt.it;
     if (createErrors === false)
         return codegen_1._ `{}`;
-    return (opts.jtd && !opts.ajvErrors ? jtdErrorObject : ajvErrorObject)(cxt, error);
+    return errorObject(cxt, error, errorPaths);
 }
-function jtdErrorObject(cxt, { message }) {
-    const { gen, keyword, it } = cxt;
-    const { errorPath, errSchemaPath, opts } = it;
+function errorObject(cxt, error, errorPaths = {}) {
+    const { gen, it } = cxt;
     const keyValues = [
-        [E.instancePath, codegen_1.strConcat(names_1.default.dataPath, errorPath)],
-        [E.schemaPath, codegen_1.str `${errSchemaPath}/${keyword}`],
+        errorInstancePath(it, errorPaths),
+        errorSchemaPath(cxt, errorPaths),
     ];
-    if (opts.messages) {
-        keyValues.push([E.message, typeof message == "function" ? message(cxt) : message]);
-    }
+    extraErrorProps(cxt, error, keyValues);
     return gen.object(...keyValues);
 }
-function ajvErrorObject(cxt, error) {
-    const { gen, keyword, data, schemaValue, it } = cxt;
-    const { topSchemaRef, schemaPath, errorPath, errSchemaPath, propertyName, opts } = it;
-    const { params, message } = error;
-    const keyValues = [
-        [E.keyword, keyword],
-        [names_1.default.dataPath, codegen_1.strConcat(names_1.default.dataPath, errorPath)],
-        [E.schemaPath, codegen_1.str `${errSchemaPath}/${keyword}`],
-        [E.params, typeof params == "function" ? params(cxt) : params || codegen_1._ `{}`],
-    ];
-    if (propertyName)
-        keyValues.push([E.propertyName, propertyName]);
+function errorInstancePath({ errorPath }, { instancePath }) {
+    const instPath = instancePath
+        ? codegen_1.str `${errorPath}${subschema_1.getErrorPath(instancePath, subschema_1.Type.Str)}`
+        : errorPath;
+    return [names_1.default.instancePath, codegen_1.strConcat(names_1.default.instancePath, instPath)];
+}
+function errorSchemaPath({ keyword, it: { errSchemaPath } }, { schemaPath, parentSchema }) {
+    let schPath = parentSchema ? errSchemaPath : codegen_1.str `${errSchemaPath}/${keyword}`;
+    if (schemaPath) {
+        schPath = codegen_1.str `${schPath}${subschema_1.getErrorPath(schemaPath, subschema_1.Type.Str)}`;
+    }
+    return [E.schemaPath, schPath];
+}
+function extraErrorProps(cxt, { params, message }, keyValues) {
+    const { keyword, data, schemaValue, it } = cxt;
+    const { opts, propertyName, topSchemaRef, schemaPath } = it;
+    keyValues.push([E.keyword, keyword], [E.params, typeof params == "function" ? params(cxt) : params || codegen_1._ `{}`]);
     if (opts.messages) {
         keyValues.push([E.message, typeof message == "function" ? message(cxt) : message]);
     }
     if (opts.verbose) {
         keyValues.push([E.schema, schemaValue], [E.parentSchema, codegen_1._ `${topSchemaRef}${schemaPath}`], [names_1.default.data, data]);
     }
-    return gen.object(...keyValues);
+    if (propertyName)
+        keyValues.push([E.propertyName, propertyName]);
 }
 
-},{"./codegen":2,"./names":8}],7:[function(require,module,exports){
+},{"./codegen":2,"./names":8,"./subschema":11}],7:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolveSchema = exports.getCompilingSchema = exports.resolveRef = exports.compileSchema = exports.SchemaEnv = void 0;
@@ -1394,6 +1405,7 @@ class SchemaEnv {
         this.schema = env.schema;
         this.root = env.root || this;
         this.baseId = (_a = env.baseId) !== null && _a !== void 0 ? _a : resolve_1.normalizeId(schema === null || schema === void 0 ? void 0 : schema.$id);
+        this.schemaPath = env.schemaPath;
         this.localRefs = env.localRefs;
         this.meta = env.meta;
         this.$async = schema === null || schema === void 0 ? void 0 : schema.$async;
@@ -1443,7 +1455,7 @@ function compileSchema(sch) {
         rootId,
         baseId: sch.baseId || rootId,
         schemaPath: codegen_1.nil,
-        errSchemaPath: this.opts.jtd ? "" : "#",
+        errSchemaPath: sch.schemaPath || (this.opts.jtd ? "" : "#"),
         errorPath: codegen_1._ `""`,
         opts: this.opts,
         self: this,
@@ -1617,7 +1629,7 @@ const names = {
     data: new codegen_1.Name("data"),
     // args passed from referencing schema
     valCxt: new codegen_1.Name("valCxt"),
-    dataPath: new codegen_1.Name("dataPath"),
+    instancePath: new codegen_1.Name("instancePath"),
     parentData: new codegen_1.Name("parentData"),
     parentDataProperty: new codegen_1.Name("parentDataProperty"),
     rootData: new codegen_1.Name("rootData"),
@@ -1820,7 +1832,7 @@ exports.getRules = getRules;
 },{}],11:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.applySubschema = exports.Type = void 0;
+exports.getErrorPath = exports.applySubschema = exports.Type = void 0;
 const validate_1 = require("./validate");
 const util_1 = require("./util");
 const codegen_1 = require("./codegen");
@@ -1924,6 +1936,7 @@ function getErrorPath(dataProp, dataPropType, jsPropertySyntax) {
     }
     return jsPropertySyntax ? codegen_1.getProperty(dataProp).toString() : "/" + util_1.escapeJsonPointer(dataProp);
 }
+exports.getErrorPath = getErrorPath;
 
 },{"./codegen":2,"./util":13,"./validate":18}],12:[function(require,module,exports){
 "use strict";
@@ -2166,7 +2179,7 @@ function falseSchemaError(it, overrideAllErrors) {
         params: {},
         it,
     };
-    errors_1.reportError(cxt, boolError, overrideAllErrors);
+    errors_1.reportError(cxt, boolError, undefined, overrideAllErrors);
 }
 
 },{"../codegen":2,"../errors":6,"../names":8}],16:[function(require,module,exports){
@@ -2348,7 +2361,7 @@ function checkDataTypes(dataTypes, data, strictNums, correct) {
 }
 exports.checkDataTypes = checkDataTypes;
 const typeError = {
-    message: ({ schema }) => codegen_1.str `should be ${schema}`,
+    message: ({ schema }) => `must be ${schema}`,
     params: ({ schema, schemaValue }) => typeof schema == "string" ? codegen_1._ `{type: ${schema}}` : codegen_1._ `{type: ${schemaValue}}`,
 };
 function reportTypeError(it) {
@@ -2444,18 +2457,18 @@ function validateFunction({ gen, validateName, schema, schemaEnv, opts }, body) 
     }
 }
 function destructureValCxt(opts) {
-    return codegen_1._ `{${names_1.default.dataPath}="", ${names_1.default.parentData}, ${names_1.default.parentDataProperty}, ${names_1.default.rootData}=${names_1.default.data}${opts.dynamicRef ? codegen_1._ `, ${names_1.default.dynamicAnchors}={}` : codegen_1.nil}}={}`;
+    return codegen_1._ `{${names_1.default.instancePath}="", ${names_1.default.parentData}, ${names_1.default.parentDataProperty}, ${names_1.default.rootData}=${names_1.default.data}${opts.dynamicRef ? codegen_1._ `, ${names_1.default.dynamicAnchors}={}` : codegen_1.nil}}={}`;
 }
 function destructureValCxtES5(gen, opts) {
     gen.if(names_1.default.valCxt, () => {
-        gen.var(names_1.default.dataPath, codegen_1._ `${names_1.default.valCxt}.${names_1.default.dataPath}`);
+        gen.var(names_1.default.instancePath, codegen_1._ `${names_1.default.valCxt}.${names_1.default.instancePath}`);
         gen.var(names_1.default.parentData, codegen_1._ `${names_1.default.valCxt}.${names_1.default.parentData}`);
         gen.var(names_1.default.parentDataProperty, codegen_1._ `${names_1.default.valCxt}.${names_1.default.parentDataProperty}`);
         gen.var(names_1.default.rootData, codegen_1._ `${names_1.default.valCxt}.${names_1.default.rootData}`);
         if (opts.dynamicRef)
             gen.var(names_1.default.dynamicAnchors, codegen_1._ `${names_1.default.valCxt}.${names_1.default.dynamicAnchors}`);
     }, () => {
-        gen.var(names_1.default.dataPath, codegen_1._ `""`);
+        gen.var(names_1.default.instancePath, codegen_1._ `""`);
         gen.var(names_1.default.parentData, codegen_1._ `undefined`);
         gen.var(names_1.default.parentDataProperty, codegen_1._ `undefined`);
         gen.var(names_1.default.rootData, names_1.default.data);
@@ -2868,6 +2881,7 @@ const removedOptions = {
     unknownFormats: "Disable strict mode or pass `true` to `ajv.addFormat` (or `formats` option).",
     cache: "Map is used as cache, schema object as key.",
     serialize: "Map is used as cache, schema object as key.",
+    ajvErrors: "It is default now, see option `strict`.",
 };
 const deprecatedOptions = {
     ignoreKeywordsWithRef: "",
@@ -3190,7 +3204,7 @@ class Ajv {
         if (!errors || errors.length === 0)
             return "No errors";
         return errors
-            .map((e) => `${dataVar}${e.dataPath} ${e.message}`)
+            .map((e) => `${dataVar}${e.instancePath} ${e.message}`)
             .reduce((text, msg) => text + separator + msg);
     }
     $dataMetaSchema(metaSchema, keywordsJsonPointers) {
@@ -3582,7 +3596,7 @@ const subschema_1 = require("../../compile/subschema");
 const util_1 = require("../../compile/util");
 const validate_1 = require("../../compile/validate");
 const error = {
-    message: ({ params: { len } }) => codegen_1.str `should NOT have more than ${len} items`,
+    message: ({ params: { len } }) => codegen_1.str `must NOT have more than ${len} items`,
     params: ({ params: { len } }) => codegen_1._ `{limit: ${len}}`,
 };
 const def = {
@@ -3629,7 +3643,7 @@ const names_1 = require("../../compile/names");
 const subschema_1 = require("../../compile/subschema");
 const util_1 = require("../../compile/util");
 const error = {
-    message: "should NOT have additional properties",
+    message: "must NOT have additional properties",
     params: ({ params }) => codegen_1._ `{additionalProperty: ${params.additionalProperty}}`,
 };
 const def = {
@@ -3761,9 +3775,7 @@ const def = {
     schemaType: "array",
     trackErrors: true,
     code: code_1.validateUnion,
-    error: {
-        message: "should match some schema in anyOf",
-    },
+    error: { message: "must match a schema in anyOf" },
 };
 exports.default = def;
 
@@ -3776,8 +3788,8 @@ const util_1 = require("../../compile/util");
 const validate_1 = require("../../compile/validate");
 const error = {
     message: ({ params: { min, max } }) => max === undefined
-        ? codegen_1.str `should contain at least ${min} valid item(s)`
-        : codegen_1.str `should contain at least ${min} and no more than ${max} valid item(s)`,
+        ? codegen_1.str `must contain at least ${min} valid item(s)`
+        : codegen_1.str `must contain at least ${min} and no more than ${max} valid item(s)`,
     params: ({ params: { min, max } }) => max === undefined ? codegen_1._ `{minContains: ${min}}` : codegen_1._ `{minContains: ${min}, maxContains: ${max}}`,
 };
 const def = {
@@ -3867,7 +3879,7 @@ const code_1 = require("../code");
 exports.error = {
     message: ({ params: { property, depsCount, deps } }) => {
         const property_ies = depsCount === 1 ? "property" : "properties";
-        return codegen_1.str `should have ${property_ies} ${deps} when property ${property} is present`;
+        return codegen_1.str `must have ${property_ies} ${deps} when property ${property} is present`;
     },
     params: ({ params: { property, depsCount, deps, missingProperty } }) => codegen_1._ `{property: ${property},
     missingProperty: ${missingProperty},
@@ -3950,7 +3962,7 @@ const codegen_1 = require("../../compile/codegen");
 const util_1 = require("../../compile/util");
 const validate_1 = require("../../compile/validate");
 const error = {
-    message: ({ params }) => codegen_1.str `should match "${params.ifClause}" schema`,
+    message: ({ params }) => codegen_1.str `must match "${params.ifClause}" schema`,
     params: ({ params }) => codegen_1._ `{failingKeyword: ${params.ifClause}}`,
 };
 const def = {
@@ -4124,9 +4136,7 @@ const def = {
         }, valid);
         cxt.result(valid, () => cxt.error(), () => cxt.reset());
     },
-    error: {
-        message: "should NOT be valid",
-    },
+    error: { message: "must NOT be valid" },
 };
 exports.default = def;
 
@@ -4136,7 +4146,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
 const util_1 = require("../../compile/util");
 const error = {
-    message: "should match exactly one schema in oneOf",
+    message: "must match exactly one schema in oneOf",
     params: ({ params }) => codegen_1._ `{passingSchemas: ${params.passing}}`,
 };
 const def = {
@@ -4321,7 +4331,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
 const util_1 = require("../../compile/util");
 const error = {
-    message: ({ params }) => codegen_1.str `property name '${params.propertyName}' is invalid`,
+    message: "property name must be valid",
     params: ({ params }) => codegen_1._ `{propertyName: ${params.propertyName}}`,
 };
 const def = {
@@ -4426,7 +4436,7 @@ exports.schemaProperties = schemaProperties;
 function callValidateCode({ schemaCode, data, it: { gen, topSchemaRef, schemaPath, errorPath }, it }, func, context, passSchema) {
     const dataAndSchema = passSchema ? codegen_1._ `${schemaCode}, ${data}, ${topSchemaRef}${schemaPath}` : data;
     const valCxt = [
-        [names_1.default.dataPath, codegen_1.strConcat(names_1.default.dataPath, errorPath)],
+        [names_1.default.instancePath, codegen_1.strConcat(names_1.default.instancePath, errorPath)],
         [names_1.default.parentData, it.parentData],
         [names_1.default.parentDataProperty, it.parentDataProperty],
         [names_1.default.rootData, names_1.default.rootData],
@@ -4671,7 +4681,7 @@ exports.default = draft7Vocabularies;
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
 const error = {
-    message: ({ schemaCode }) => codegen_1.str `should match format "${schemaCode}"`,
+    message: ({ schemaCode }) => codegen_1.str `must match format "${schemaCode}"`,
     params: ({ schemaCode }) => codegen_1._ `{format: ${schemaCode}}`,
 };
 const def = {
@@ -4790,7 +4800,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
 const equal = require("fast-deep-equal");
 const error = {
-    message: "should be equal to constant",
+    message: "must be equal to constant",
     params: ({ schemaCode }) => codegen_1._ `{allowedValue: ${schemaCode}}`,
 };
 const def = {
@@ -4814,7 +4824,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
 const equal = require("fast-deep-equal");
 const error = {
-    message: "should be equal to one of the allowed values",
+    message: "must be equal to one of the allowed values",
     params: ({ schemaCode }) => codegen_1._ `{allowedValues: ${schemaCode}}`,
 };
 const def = {
@@ -4899,7 +4909,7 @@ const codegen_1 = require("../../compile/codegen");
 const error = {
     message({ keyword, schemaCode }) {
         const comp = keyword === "maxItems" ? "more" : "fewer";
-        return codegen_1.str `should NOT have ${comp} than ${schemaCode} items`;
+        return codegen_1.str `must NOT have ${comp} than ${schemaCode} items`;
     },
     params: ({ schemaCode }) => codegen_1._ `{limit: ${schemaCode}}`,
 };
@@ -4925,7 +4935,7 @@ const ucs2length_1 = require("../../compile/ucs2length");
 const error = {
     message({ keyword, schemaCode }) {
         const comp = keyword === "maxLength" ? "more" : "fewer";
-        return codegen_1.str `should NOT have ${comp} than ${schemaCode} characters`;
+        return codegen_1.str `must NOT have ${comp} than ${schemaCode} characters`;
     },
     params: ({ schemaCode }) => codegen_1._ `{limit: ${schemaCode}}`,
 };
@@ -4966,7 +4976,7 @@ const KWDs = {
     exclusiveMinimum: { okStr: ">", ok: ops.GT, fail: ops.LTE },
 };
 const error = {
-    message: ({ keyword, schemaCode }) => codegen_1.str `should be ${KWDs[keyword].okStr} ${schemaCode}`,
+    message: ({ keyword, schemaCode }) => codegen_1.str `must be ${KWDs[keyword].okStr} ${schemaCode}`,
     params: ({ keyword, schemaCode }) => codegen_1._ `{comparison: ${KWDs[keyword].okStr}, limit: ${schemaCode}}`,
 };
 const def = {
@@ -4989,7 +4999,7 @@ const codegen_1 = require("../../compile/codegen");
 const error = {
     message({ keyword, schemaCode }) {
         const comp = keyword === "maxProperties" ? "more" : "fewer";
-        return codegen_1.str `should NOT have ${comp} than ${schemaCode} items`;
+        return codegen_1.str `must NOT have ${comp} than ${schemaCode} items`;
     },
     params: ({ schemaCode }) => codegen_1._ `{limit: ${schemaCode}}`,
 };
@@ -5012,7 +5022,7 @@ exports.default = def;
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
 const error = {
-    message: ({ schemaCode }) => codegen_1.str `should be multiple of ${schemaCode}`,
+    message: ({ schemaCode }) => codegen_1.str `must be multiple of ${schemaCode}`,
     params: ({ schemaCode }) => codegen_1._ `{multipleOf: ${schemaCode}}`,
 };
 const def = {
@@ -5040,7 +5050,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const code_1 = require("../code");
 const codegen_1 = require("../../compile/codegen");
 const error = {
-    message: ({ schemaCode }) => codegen_1.str `should match pattern "${schemaCode}"`,
+    message: ({ schemaCode }) => codegen_1.str `must match pattern "${schemaCode}"`,
     params: ({ schemaCode }) => codegen_1._ `{pattern: ${schemaCode}}`,
 };
 const def = {
@@ -5064,7 +5074,7 @@ const code_1 = require("../code");
 const codegen_1 = require("../../compile/codegen");
 const validate_1 = require("../../compile/validate");
 const error = {
-    message: ({ params: { missingProperty } }) => codegen_1.str `should have required property '${missingProperty}'`,
+    message: ({ params: { missingProperty } }) => codegen_1.str `must have required property '${missingProperty}'`,
     params: ({ params: { missingProperty } }) => codegen_1._ `{missingProperty: ${missingProperty}}`,
 };
 const def = {
@@ -5144,7 +5154,7 @@ const dataType_1 = require("../../compile/validate/dataType");
 const codegen_1 = require("../../compile/codegen");
 const equal = require("fast-deep-equal");
 const error = {
-    message: ({ params: { i, j } }) => codegen_1.str `should NOT have duplicate items (items ## ${j} and ${i} are identical)`,
+    message: ({ params: { i, j } }) => codegen_1.str `must NOT have duplicate items (items ## ${j} and ${i} are identical)`,
     params: ({ params: { i, j } }) => codegen_1._ `{i: ${i}, j: ${j}}`,
 };
 const def = {
