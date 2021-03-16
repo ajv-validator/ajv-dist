@@ -1344,7 +1344,7 @@ function getJsonPointer(parsedRef, { baseId, schema, root }) {
     return undefined;
 }
 
-},{"../runtime/error_classes":21,"./codegen":2,"./names":6,"./resolve":7,"./util":9,"./validate":14,"uri-js":59}],6:[function(require,module,exports){
+},{"../runtime/error_classes":21,"./codegen":2,"./names":6,"./resolve":7,"./util":9,"./validate":14,"uri-js":61}],6:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("./codegen");
@@ -1526,7 +1526,7 @@ function getSchemaRefs(schema) {
 }
 exports.getSchemaRefs = getSchemaRefs;
 
-},{"./util":9,"fast-deep-equal":57,"json-schema-traverse":58,"uri-js":59}],8:[function(require,module,exports){
+},{"./util":9,"fast-deep-equal":59,"json-schema-traverse":60,"uri-js":61}],8:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRules = exports.isJSONType = void 0;
@@ -2806,10 +2806,13 @@ const removedOptions = {
     missingRefs: "Pass empty schema with $id that should be ignored to ajv.addSchema.",
     processCode: "Use option `code: {process: (code, schemaEnv: object) => string}`",
     sourceCode: "Use option `code: {source: true}`",
-    schemaId: "JSON Schema draft-04 is not supported in Ajv v7.",
+    schemaId: "JSON Schema draft-04 is not supported in Ajv v7/8.",
     strictDefaults: "It is default now, see option `strict`.",
     strictKeywords: "It is default now, see option `strict`.",
     strictNumbers: "It is default now, see option `strict`.",
+    strictTypes: "Use option `strict.types`.",
+    strictTuples: "Use option `strict.tuples`.",
+    strictRequired: "Use option `strict.required`.",
     uniqueItems: '"uniqueItems" keyword is always validated.',
     unknownFormats: "Disable strict mode or pass `true` to `ajv.addFormat` (or `formats` option).",
     cache: "Map is used as cache, schema object as key.",
@@ -3534,7 +3537,7 @@ const equal = require("fast-deep-equal");
 equal.code = code_1._ `require("ajv/dist/runtime/equal").default`;
 exports.default = equal;
 
-},{"../compile/codegen/code":1,"fast-deep-equal":57}],21:[function(require,module,exports){
+},{"../compile/codegen/code":1,"fast-deep-equal":59}],21:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MissingRefError = exports.ValidationError = void 0;
@@ -4146,10 +4149,12 @@ const def = {
     trackErrors: true,
     error,
     code(cxt) {
-        const { gen, schema, it } = cxt;
+        const { gen, schema, parentSchema, it } = cxt;
         /* istanbul ignore if */
         if (!Array.isArray(schema))
             throw new Error("ajv implementation error");
+        if (it.opts.discriminator && parentSchema.discriminator)
+            return;
         const schArr = schema;
         const valid = gen.let("valid", false);
         const passing = gen.let("passing", null);
@@ -4650,6 +4655,110 @@ exports.default = def;
 },{"../../compile":5,"../../compile/codegen":2,"../../compile/names":6,"../../compile/util":9,"../../runtime/error_classes":21,"../code":38}],42:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const codegen_1 = require("../../compile/codegen");
+const types_1 = require("../discriminator/types");
+const error = {
+    message: ({ params: { discrError, tagName } }) => discrError === types_1.DiscrError.Tag
+        ? `tag "${tagName}" must be string`
+        : `value of tag "${tagName}" must be in oneOf`,
+    params: ({ params: { discrError, tag, tagName } }) => codegen_1._ `{error: ${discrError}, tag: ${tagName}, tagValue: ${tag}}`,
+};
+const def = {
+    keyword: "discriminator",
+    type: "object",
+    schemaType: "object",
+    error,
+    code(cxt) {
+        const { gen, data, schema, parentSchema, it } = cxt;
+        const { oneOf } = parentSchema;
+        if (!it.opts.discriminator) {
+            throw new Error("discriminator: requires discriminator option");
+        }
+        const tagName = schema.propertyName;
+        if (typeof tagName != "string")
+            throw new Error("discriminator: requires propertyName");
+        if (schema.mapping)
+            throw new Error("discriminator: mapping is not supported");
+        if (!oneOf)
+            throw new Error("discriminator: requires oneOf keyword");
+        const valid = gen.let("valid", false);
+        const tag = gen.const("tag", codegen_1._ `${data}${codegen_1.getProperty(tagName)}`);
+        gen.if(codegen_1._ `typeof ${tag} == "string"`, () => validateMapping(), () => cxt.error(false, { discrError: types_1.DiscrError.Tag, tag, tagName }));
+        cxt.ok(valid);
+        function validateMapping() {
+            const mapping = getMapping();
+            gen.if(false);
+            for (const tagValue in mapping) {
+                gen.elseIf(codegen_1._ `${tag} === ${tagValue}`);
+                gen.assign(valid, applyTagSchema(mapping[tagValue]));
+            }
+            gen.else();
+            cxt.error(false, { discrError: types_1.DiscrError.Mapping, tag, tagName });
+            gen.endIf();
+        }
+        function applyTagSchema(schemaProp) {
+            const _valid = gen.name("valid");
+            const schCxt = cxt.subschema({ keyword: "oneOf", schemaProp }, _valid);
+            cxt.mergeEvaluated(schCxt, codegen_1.Name);
+            return _valid;
+        }
+        function getMapping() {
+            var _a;
+            const oneOfMapping = {};
+            const topRequired = hasRequired(parentSchema);
+            let tagRequired = true;
+            for (let i = 0; i < oneOf.length; i++) {
+                const sch = oneOf[i];
+                const propSch = (_a = sch.properties) === null || _a === void 0 ? void 0 : _a[tagName];
+                if (typeof propSch != "object") {
+                    throw new Error(`discriminator: oneOf schemas must have "properties/${tagName}"`);
+                }
+                tagRequired = tagRequired && (topRequired || hasRequired(sch));
+                addMappings(propSch, i);
+            }
+            if (!tagRequired)
+                throw new Error(`discriminator: "${tagName}" must be required`);
+            return oneOfMapping;
+            function hasRequired({ required }) {
+                return Array.isArray(required) && required.includes(tagName);
+            }
+            function addMappings(sch, i) {
+                if (sch.const) {
+                    addMapping(sch.const, i);
+                }
+                else if (sch.enum) {
+                    for (const tagValue of sch.enum) {
+                        addMapping(tagValue, i);
+                    }
+                }
+                else {
+                    throw new Error(`discriminator: "properties/${tagName}" must have "const" or "enum"`);
+                }
+            }
+            function addMapping(tagValue, i) {
+                if (typeof tagValue != "string" || tagValue in oneOfMapping) {
+                    throw new Error(`discriminator: "${tagName}" values must be unique strings`);
+                }
+                oneOfMapping[tagValue] = i;
+            }
+        }
+    },
+};
+exports.default = def;
+
+},{"../../compile/codegen":2,"../discriminator/types":43}],43:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DiscrError = void 0;
+var DiscrError;
+(function (DiscrError) {
+    DiscrError["Tag"] = "tag";
+    DiscrError["Mapping"] = "mapping";
+})(DiscrError = exports.DiscrError || (exports.DiscrError = {}));
+
+},{}],44:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 const core_1 = require("./core");
 const validation_1 = require("./validation");
 const applicator_1 = require("./applicator");
@@ -4665,7 +4774,7 @@ const draft7Vocabularies = [
 ];
 exports.default = draft7Vocabularies;
 
-},{"./applicator":30,"./core":40,"./format":44,"./metadata":45,"./validation":48}],43:[function(require,module,exports){
+},{"./applicator":30,"./core":40,"./format":46,"./metadata":47,"./validation":50}],45:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4757,14 +4866,14 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2}],44:[function(require,module,exports){
+},{"../../compile/codegen":2}],46:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const format_1 = require("./format");
 const format = [format_1.default];
 exports.default = format;
 
-},{"./format":43}],45:[function(require,module,exports){
+},{"./format":45}],47:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.contentVocabulary = exports.metadataVocabulary = void 0;
@@ -4783,7 +4892,7 @@ exports.contentVocabulary = [
     "contentSchema",
 ];
 
-},{}],46:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4805,7 +4914,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2,"../../compile/util":9,"../../runtime/equal":20}],47:[function(require,module,exports){
+},{"../../compile/codegen":2,"../../compile/util":9,"../../runtime/equal":20}],49:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4853,7 +4962,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2,"../../compile/util":9,"../../runtime/equal":20}],48:[function(require,module,exports){
+},{"../../compile/codegen":2,"../../compile/util":9,"../../runtime/equal":20}],50:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const limitNumber_1 = require("./limitNumber");
@@ -4887,7 +4996,7 @@ const validation = [
 ];
 exports.default = validation;
 
-},{"./const":46,"./enum":47,"./limitItems":49,"./limitLength":50,"./limitNumber":51,"./limitProperties":52,"./multipleOf":53,"./pattern":54,"./required":55,"./uniqueItems":56}],49:[function(require,module,exports){
+},{"./const":48,"./enum":49,"./limitItems":51,"./limitLength":52,"./limitNumber":53,"./limitProperties":54,"./multipleOf":55,"./pattern":56,"./required":57,"./uniqueItems":58}],51:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4912,7 +5021,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2}],50:[function(require,module,exports){
+},{"../../compile/codegen":2}],52:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4940,7 +5049,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2,"../../compile/util":9,"../../runtime/ucs2length":22}],51:[function(require,module,exports){
+},{"../../compile/codegen":2,"../../compile/util":9,"../../runtime/ucs2length":22}],53:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4968,7 +5077,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2}],52:[function(require,module,exports){
+},{"../../compile/codegen":2}],54:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4993,7 +5102,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2}],53:[function(require,module,exports){
+},{"../../compile/codegen":2}],55:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -5020,7 +5129,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2}],54:[function(require,module,exports){
+},{"../../compile/codegen":2}],56:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const code_1 = require("../code");
@@ -5043,7 +5152,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2,"../code":38}],55:[function(require,module,exports){
+},{"../../compile/codegen":2,"../code":38}],57:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const code_1 = require("../code");
@@ -5123,7 +5232,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2,"../../compile/util":9,"../code":38}],56:[function(require,module,exports){
+},{"../../compile/codegen":2,"../../compile/util":9,"../code":38}],58:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const dataType_1 = require("../../compile/validate/dataType");
@@ -5188,7 +5297,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2,"../../compile/util":9,"../../compile/validate/dataType":12,"../../runtime/equal":20}],57:[function(require,module,exports){
+},{"../../compile/codegen":2,"../../compile/util":9,"../../compile/validate/dataType":12,"../../runtime/equal":20}],59:[function(require,module,exports){
 'use strict';
 
 // do not edit .js files directly - edit src/index.jst
@@ -5236,7 +5345,7 @@ module.exports = function equal(a, b) {
   return a!==a && b!==b;
 };
 
-},{}],58:[function(require,module,exports){
+},{}],60:[function(require,module,exports){
 'use strict';
 
 var traverse = module.exports = function (schema, opts, cb) {
@@ -5331,7 +5440,7 @@ function escapeJsonPtr(str) {
   return str.replace(/~/g, '~0').replace(/\//g, '~1');
 }
 
-},{}],59:[function(require,module,exports){
+},{}],61:[function(require,module,exports){
 /** @license URI.js v4.4.1 (c) 2011 Gary Court. License: http://github.com/garycourt/uri-js */
 (function (global, factory) {
 	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
@@ -6782,6 +6891,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
 const core_1 = require("./core");
 const draft7_1 = require("./vocabularies/draft7");
+const discriminator_1 = require("./vocabularies/discriminator");
 const draft7MetaSchema = require("./refs/json-schema-draft-07.json");
 const META_SUPPORT_DATA = ["/properties"];
 const META_SCHEMA_ID = "http://json-schema.org/draft-07/schema";
@@ -6789,6 +6899,8 @@ class Ajv extends core_1.default {
     _addVocabularies() {
         super._addVocabularies();
         draft7_1.default.forEach((v) => this.addVocabulary(v));
+        if (this.opts.discriminator)
+            this.addKeyword(discriminator_1.default);
     }
     _addDefaultMetaSchema() {
         super._addDefaultMetaSchema();
@@ -6818,5 +6930,5 @@ Object.defineProperty(exports, "nil", { enumerable: true, get: function () { ret
 Object.defineProperty(exports, "Name", { enumerable: true, get: function () { return codegen_1.Name; } });
 Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function () { return codegen_1.CodeGen; } });
 
-},{"./compile/codegen":2,"./compile/validate":14,"./core":17,"./refs/json-schema-draft-07.json":19,"./vocabularies/draft7":42}]},{},[])("ajv")
+},{"./compile/codegen":2,"./compile/validate":14,"./core":17,"./refs/json-schema-draft-07.json":19,"./vocabularies/discriminator":42,"./vocabularies/draft7":44}]},{},[])("ajv")
 });
