@@ -2630,7 +2630,7 @@ function assignDefault(it, prop, defaultValue) {
 },{"../codegen":2,"../util":13}],18:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.KeywordCxt = exports.validateFunctionCode = void 0;
+exports.getData = exports.KeywordCxt = exports.validateFunctionCode = void 0;
 const boolSchema_1 = require("./boolSchema");
 const dataType_1 = require("./dataType");
 const applicability_1 = require("./applicability");
@@ -3133,6 +3133,7 @@ function getData($data, { dataLevel, dataNames, dataPathArr }) {
         return `Cannot access ${pointerType} ${up} levels up, current level is ${dataLevel}`;
     }
 }
+exports.getData = getData;
 
 },{"../codegen":2,"../errors":4,"../names":9,"../resolve":11,"../util":13,"./applicability":14,"./boolSchema":15,"./dataType":16,"./defaults":17,"./keyword":19,"./subschema":20}],19:[function(require,module,exports){
 "use strict";
