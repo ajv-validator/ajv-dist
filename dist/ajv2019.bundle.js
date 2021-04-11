@@ -2670,7 +2670,7 @@ function validSchemaType(schema, schemaType, allowUndefined = false) {
                 : typeof schema == st || (allowUndefined && typeof schema == "undefined")));
 }
 exports.validSchemaType = validSchemaType;
-function validateKeywordUsage({ schema, opts, self }, def, keyword) {
+function validateKeywordUsage({ schema, opts, self, errSchemaPath }, def, keyword) {
     /* istanbul ignore if */
     if (Array.isArray(def.keyword) ? !def.keyword.includes(keyword) : def.keyword !== keyword) {
         throw new Error("ajv implementation error");
@@ -2682,7 +2682,8 @@ function validateKeywordUsage({ schema, opts, self }, def, keyword) {
     if (def.validateSchema) {
         const valid = def.validateSchema(schema[keyword]);
         if (!valid) {
-            const msg = "keyword value is invalid: " + self.errorsText(def.validateSchema.errors);
+            const msg = `keyword "${keyword}" value is invalid at path "${errSchemaPath}": ` +
+                self.errorsText(def.validateSchema.errors);
             if (opts.validateSchema === "log")
                 self.logger.error(msg);
             else
@@ -2838,7 +2839,7 @@ const deprecatedOptions = {
 const MAX_EXPRESSION = 200;
 // eslint-disable-next-line complexity
 function requiredOptions(o) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
     const s = o.strict;
     const _optz = (_a = o.code) === null || _a === void 0 ? void 0 : _a.optimize;
     const optimize = _optz === true || _optz === undefined ? 1 : _optz || 0;
@@ -2857,6 +2858,7 @@ function requiredOptions(o) {
         addUsedSchema: (_s = o.addUsedSchema) !== null && _s !== void 0 ? _s : true,
         validateSchema: (_t = o.validateSchema) !== null && _t !== void 0 ? _t : true,
         validateFormats: (_u = o.validateFormats) !== null && _u !== void 0 ? _u : true,
+        unicodeRegExp: (_v = o.unicodeRegExp) !== null && _v !== void 0 ? _v : true,
     };
 }
 class Ajv {
@@ -3887,7 +3889,7 @@ const def = {
                 definedProp = codegen_1.nil;
             }
             if (patProps.length) {
-                definedProp = codegen_1.or(definedProp, ...patProps.map((p) => codegen_1._ `${code_1.usePattern(gen, p)}.test(${key})`));
+                definedProp = codegen_1.or(definedProp, ...patProps.map((p) => codegen_1._ `${code_1.usePattern(cxt, p)}.test(${key})`));
             }
             return codegen_1.not(definedProp);
         }
@@ -4496,7 +4498,7 @@ const def = {
         }
         function validateProperties(pat) {
             gen.forIn("key", data, (key) => {
-                gen.if(codegen_1._ `${code_1.usePattern(gen, pat)}.test(${key})`, () => {
+                gen.if(codegen_1._ `${code_1.usePattern(cxt, pat)}.test(${key})`, () => {
                     cxt.subschema({
                         keyword: "patternProperties",
                         schemaProp: pat,
@@ -4707,11 +4709,12 @@ function callValidateCode({ schemaCode, data, it: { gen, topSchemaRef, schemaPat
     return context !== codegen_1.nil ? codegen_1._ `${func}.call(${context}, ${args})` : codegen_1._ `${func}(${args})`;
 }
 exports.callValidateCode = callValidateCode;
-function usePattern(gen, pattern) {
+function usePattern({ gen, it: { opts } }, pattern) {
+    const u = opts.unicodeRegExp ? "u" : "";
     return gen.scopeValue("pattern", {
         key: pattern,
-        ref: new RegExp(pattern, "u"),
-        code: codegen_1._ `new RegExp(${pattern}, "u")`,
+        ref: new RegExp(pattern, u),
+        code: codegen_1._ `new RegExp(${pattern}, ${u})`,
     });
 }
 exports.usePattern = usePattern;
@@ -5684,8 +5687,10 @@ const def = {
     $data: true,
     error,
     code(cxt) {
-        const { gen, data, $data, schema, schemaCode } = cxt;
-        const regExp = $data ? codegen_1._ `(new RegExp(${schemaCode}, "u"))` : code_1.usePattern(gen, schema); // TODO regexp should be wrapped in try/catch
+        const { data, $data, schema, schemaCode, it } = cxt;
+        // TODO regexp should be wrapped in try/catchs
+        const u = it.opts.unicodeRegExp ? "u" : "";
+        const regExp = $data ? codegen_1._ `(new RegExp(${schemaCode}, ${u}))` : code_1.usePattern(cxt, schema);
         cxt.fail$data(codegen_1._ `!${regExp}.test(${data})`);
     },
 };
