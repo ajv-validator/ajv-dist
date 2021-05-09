@@ -4941,13 +4941,28 @@
         message: (cxt) => typeErrorMessage(cxt, cxt.schema),
         params: (cxt) => typeErrorParams(cxt, cxt.schema),
     };
+    function timestampCode(cxt) {
+        const { gen, data } = cxt;
+        switch (cxt.it.opts.timestamp) {
+            case "date":
+                return _ `${data} instanceof Date `;
+            case "string": {
+                const vts = useFunc(gen, validTimestamp);
+                return _ `typeof ${data} == "string" && ${vts}(${data})`;
+            }
+            default: {
+                const vts = useFunc(gen, validTimestamp);
+                return _ `${data} instanceof Date || (typeof ${data} == "string" && ${vts}(${data}))`;
+            }
+        }
+    }
     const def$7 = {
         keyword: "type",
         schemaType: "string",
         error: error$3,
         code(cxt) {
             checkMetadata(cxt);
-            const { gen, data, schema, parentSchema } = cxt;
+            const { data, schema, parentSchema } = cxt;
             let cond;
             switch (schema) {
                 case "boolean":
@@ -4955,8 +4970,7 @@
                     cond = _ `typeof ${data} == ${schema}`;
                     break;
                 case "timestamp": {
-                    const vts = useFunc(gen, validTimestamp);
-                    cond = _ `${data} instanceof Date || (typeof ${data} == "string" && ${vts}(${data}))`;
+                    cond = timestampCode(cxt);
                     break;
                 }
                 case "float32":

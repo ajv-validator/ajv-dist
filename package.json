@@ -1,6 +1,6 @@
 {
   "name": "ajv-dist",
-  "version": "8.2.0",
+  "version": "8.3.0",
   "description": "Another JSON Schema Validator: browser bundles",
   "main": "dist/ajv7.min.js",
   "repository": {
