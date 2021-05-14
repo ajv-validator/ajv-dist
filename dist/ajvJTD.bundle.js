@@ -4199,7 +4199,7 @@
         unknownFormats: "Disable strict mode or pass `true` to `ajv.addFormat` (or `formats` option).",
         cache: "Map is used as cache, schema object as key.",
         serialize: "Map is used as cache, schema object as key.",
-        ajvErrors: "It is default now, see option `strict`.",
+        ajvErrors: "It is default now.",
     };
     const deprecatedOptions = {
         ignoreKeywordsWithRef: "",
@@ -4889,30 +4889,42 @@
         return false;
     }
 
-    const DATE_TIME = /^(\d\d\d\d)-(\d\d)-(\d\d)(?:t|\s)(\d\d):(\d\d):(\d\d)(?:\.\d+)?(?:z|([+-]\d\d)(?::?(\d\d))?)$/i;
+    const DT_SEPARATOR = /t|\s/i;
+    const DATE = /^(\d\d\d\d)-(\d\d)-(\d\d)$/;
+    const TIME = /^(\d\d):(\d\d):(\d\d)(?:\.\d+)?(?:z|([+-]\d\d)(?::?(\d\d))?)$/i;
     const DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    function validTimestamp(str) {
+    function validTimestamp(str, allowDate) {
         // http://tools.ietf.org/html/rfc3339#section-5.6
-        const matches = DATE_TIME.exec(str);
+        const dt = str.split(DT_SEPARATOR);
+        return ((dt.length === 2 && validDate(dt[0]) && validTime(dt[1])) ||
+            (allowDate && dt.length === 1 && validDate(dt[0])));
+    }
+    function validDate(str) {
+        const matches = DATE.exec(str);
         if (!matches)
             return false;
         const y = +matches[1];
         const m = +matches[2];
         const d = +matches[3];
-        const hr = +matches[4];
-        const min = +matches[5];
-        const sec = +matches[6];
-        const tzH = +(matches[7] || 0);
-        const tzM = +(matches[8] || 0);
         return (m >= 1 &&
             m <= 12 &&
             d >= 1 &&
             (d <= DAYS[m] ||
                 // leap year: https://tools.ietf.org/html/rfc3339#appendix-C
-                (m === 2 && d === 29 && (y % 100 === 0 ? y % 400 === 0 : y % 4 === 0))) &&
-            ((hr <= 23 && min <= 59 && sec <= 59) ||
-                // leap second
-                (hr - tzH === 23 && min - tzM === 59 && sec === 60)));
+                (m === 2 && d === 29 && (y % 100 === 0 ? y % 400 === 0 : y % 4 === 0))));
+    }
+    function validTime(str) {
+        const matches = TIME.exec(str);
+        if (!matches)
+            return false;
+        const hr = +matches[1];
+        const min = +matches[2];
+        const sec = +matches[3];
+        const tzH = +(matches[4] || 0);
+        const tzM = +(matches[5] || 0);
+        return ((hr <= 23 && min <= 59 && sec <= 59) ||
+            // leap second
+            (hr - tzH === 23 && min - tzM === 59 && sec === 60));
     }
     validTimestamp.code = 'require("ajv/dist/runtime/timestamp").default';
 
@@ -4942,19 +4954,14 @@
         params: (cxt) => typeErrorParams(cxt, cxt.schema),
     };
     function timestampCode(cxt) {
-        const { gen, data } = cxt;
-        switch (cxt.it.opts.timestamp) {
-            case "date":
-                return _ `${data} instanceof Date `;
-            case "string": {
-                const vts = useFunc(gen, validTimestamp);
-                return _ `typeof ${data} == "string" && ${vts}(${data})`;
-            }
-            default: {
-                const vts = useFunc(gen, validTimestamp);
-                return _ `${data} instanceof Date || (typeof ${data} == "string" && ${vts}(${data}))`;
-            }
-        }
+        const { gen, data, it } = cxt;
+        const { timestamp, allowDate } = it.opts;
+        if (timestamp === "date")
+            return _ `${data} instanceof Date `;
+        const vts = useFunc(gen, validTimestamp);
+        const allowDateArg = allowDate ? _ `, true` : nil;
+        const validString = _ `typeof ${data} == "string" && ${vts}(${data}${allowDateArg})`;
+        return timestamp === "string" ? validString : or(_ `${data} instanceof Date`, validString);
     }
     const def$7 = {
         keyword: "type",
@@ -5459,8 +5466,9 @@
         "ref",
     ];
 
+    const rxEscapable = 
     // eslint-disable-next-line no-control-regex, no-misleading-character-class
-    const rxEscapable = /[\\"\u0000-\u001f\u007f-\u009f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g;
+    /[\\"\u0000-\u001f\u007f-\u009f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g;
     const escaped = {
         "\b": "\\b",
         "\t": "\\t",
@@ -6075,7 +6083,7 @@
         parseCode({ ...cxt, schema, data: _ `${cxt.data}[${key}]` });
     }
     function parseType(cxt) {
-        const { gen, schema, data } = cxt;
+        const { gen, schema, data, self } = cxt;
         switch (schema.type) {
             case "boolean":
                 parseBoolean(cxt);
@@ -6084,10 +6092,14 @@
                 parseString(cxt);
                 break;
             case "timestamp": {
-                // TODO parse timestamp?
                 parseString(cxt);
                 const vts = useFunc(gen, validTimestamp);
-                gen.if(_ `!${vts}(${data})`, () => parsingError(cxt, str `invalid timestamp`));
+                const { allowDate, parseDate } = self.opts;
+                const notValid = allowDate ? _ `!${vts}(${data}, true)` : _ `!${vts}(${data})`;
+                const fail = parseDate
+                    ? or(notValid, _ `(${data} = new Date(${data}), false)`, _ `isNaN(${data}.valueOf())`)
+                    : notValid;
+                gen.if(fail, () => parsingError(cxt, str `invalid timestamp`));
                 break;
             }
             case "float32":

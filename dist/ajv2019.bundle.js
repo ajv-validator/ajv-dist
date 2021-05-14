@@ -4325,7 +4325,7 @@
         unknownFormats: "Disable strict mode or pass `true` to `ajv.addFormat` (or `formats` option).",
         cache: "Map is used as cache, schema object as key.",
         serialize: "Map is used as cache, schema object as key.",
-        ajvErrors: "It is default now, see option `strict`.",
+        ajvErrors: "It is default now.",
     };
     const deprecatedOptions = {
         ignoreKeywordsWithRef: "",
