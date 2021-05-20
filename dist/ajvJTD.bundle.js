@@ -3378,9 +3378,10 @@
     function getSchemaRefs(schema) {
         if (typeof schema == "boolean")
             return {};
-        const schemaId = normalizeId(schema.$id);
-        const baseIds = { "": schemaId };
-        const pathPrefix = getFullPath(schemaId, false);
+        const { schemaId } = this.opts;
+        const schId = normalizeId(schema[schemaId]);
+        const baseIds = { "": schId };
+        const pathPrefix = getFullPath(schId, false);
         const localRefs = {};
         const schemaRefs = new Set();
         traverse(schema, { allKeys: true }, (sch, jsonPtr, _, parentJsonPtr) => {
@@ -3388,8 +3389,8 @@
                 return;
             const fullPath = pathPrefix + jsonPtr;
             let baseId = baseIds[parentJsonPtr];
-            if (typeof sch.$id == "string")
-                baseId = addRef.call(this, sch.$id);
+            if (typeof sch[schemaId] == "string")
+                baseId = addRef.call(this, sch[schemaId]);
             addAnchor.call(this, sch.$anchor);
             addAnchor.call(this, sch.$dynamicAnchor);
             baseIds[jsonPtr] = baseId;
@@ -3499,9 +3500,8 @@
         gen.if(_ `${it.evaluated}.dynamicItems`, () => gen.assign(_ `${it.evaluated}.items`, _ `undefined`));
     }
     function funcSourceUrl(schema, opts) {
-        return typeof schema == "object" && schema.$id && (opts.code.source || opts.code.process)
-            ? _ `/*# sourceURL=${schema.$id} */`
-            : nil;
+        const schId = typeof schema == "object" && schema[opts.schemaId];
+        return schId && (opts.code.source || opts.code.process) ? _ `/*# sourceURL=${schId} */` : nil;
     }
     // schema compilation - this function is used recursively to generate code for sub-schemas
     function subschemaCode(it, valid) {
@@ -3560,8 +3560,9 @@
         }
     }
     function updateContext(it) {
-        if (it.schema.$id)
-            it.baseId = resolveUrl(it.baseId, it.schema.$id);
+        const schId = it.schema[it.opts.schemaId];
+        if (schId)
+            it.baseId = resolveUrl(it.baseId, schId);
     }
     function checkAsyncSchema(it) {
         if (it.schema.$async && !it.schemaEnv.$async)
@@ -3946,8 +3947,9 @@
             if (typeof env.schema == "object")
                 schema = env.schema;
             this.schema = env.schema;
+            this.schemaId = env.schemaId;
             this.root = env.root || this;
-            this.baseId = (_a = env.baseId) !== null && _a !== void 0 ? _a : normalizeId(schema === null || schema === void 0 ? void 0 : schema.$id);
+            this.baseId = (_a = env.baseId) !== null && _a !== void 0 ? _a : normalizeId(schema === null || schema === void 0 ? void 0 : schema[env.schemaId || "$id"]);
             this.schemaPath = env.schemaPath;
             this.localRefs = env.localRefs;
             this.meta = env.meta;
@@ -4086,9 +4088,11 @@
             compileSchema.call(this, schOrRef);
         if (id === normalizeId(ref)) {
             const { schema } = schOrRef;
-            if (schema.$id)
-                baseId = resolveUrl(baseId, schema.$id);
-            return new SchemaEnv({ schema, root, baseId });
+            const { schemaId } = this.opts;
+            const schId = schema[schemaId];
+            if (schId)
+                baseId = resolveUrl(baseId, schId);
+            return new SchemaEnv({ schema, schemaId, root, baseId });
         }
         return getJsonPointer.call(this, p, schOrRef);
     }
@@ -4110,8 +4114,9 @@
             if (schema === undefined)
                 return;
             // TODO PREVENT_SCOPE_CHANGE could be defined in keyword def?
-            if (!PREVENT_SCOPE_CHANGE.has(part) && typeof schema == "object" && schema.$id) {
-                baseId = resolveUrl(baseId, schema.$id);
+            const schId = typeof schema == "object" && schema[this.opts.schemaId];
+            if (!PREVENT_SCOPE_CHANGE.has(part) && schId) {
+                baseId = resolveUrl(baseId, schId);
             }
         }
         let env;
@@ -4121,7 +4126,8 @@
         }
         // even though resolution failed we need to return SchemaEnv to throw exception
         // so that compileAsync loads missing schema.
-        env = env || new SchemaEnv({ schema, root, baseId });
+        const { schemaId } = this.opts;
+        env = env || new SchemaEnv({ schema, schemaId, root, baseId });
         if (env.schema !== env.root.schema)
             return env;
         return undefined;
@@ -4192,7 +4198,6 @@
         missingRefs: "Pass empty schema with $id that should be ignored to ajv.addSchema.",
         processCode: "Use option `code: {process: (code, schemaEnv: object) => string}`",
         sourceCode: "Use option `code: {source: true}`",
-        schemaId: "JSON Schema draft-04 is not supported in Ajv v7/8.",
         strictDefaults: "It is default now, see option `strict`.",
         strictKeywords: "It is default now, see option `strict`.",
         uniqueItems: '"uniqueItems" keyword is always validated.',
@@ -4209,7 +4214,7 @@
     const MAX_EXPRESSION = 200;
     // eslint-disable-next-line complexity
     function requiredOptions(o) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
         const s = o.strict;
         const _optz = (_a = o.code) === null || _a === void 0 ? void 0 : _a.optimize;
         const optimize = _optz === true || _optz === undefined ? 1 : _optz || 0;
@@ -4225,10 +4230,11 @@
             meta: (_p = o.meta) !== null && _p !== void 0 ? _p : true,
             messages: (_q = o.messages) !== null && _q !== void 0 ? _q : true,
             inlineRefs: (_r = o.inlineRefs) !== null && _r !== void 0 ? _r : true,
-            addUsedSchema: (_s = o.addUsedSchema) !== null && _s !== void 0 ? _s : true,
-            validateSchema: (_t = o.validateSchema) !== null && _t !== void 0 ? _t : true,
-            validateFormats: (_u = o.validateFormats) !== null && _u !== void 0 ? _u : true,
-            unicodeRegExp: (_v = o.unicodeRegExp) !== null && _v !== void 0 ? _v : true,
+            schemaId: (_s = o.schemaId) !== null && _s !== void 0 ? _s : "$id",
+            addUsedSchema: (_t = o.addUsedSchema) !== null && _t !== void 0 ? _t : true,
+            validateSchema: (_u = o.validateSchema) !== null && _u !== void 0 ? _u : true,
+            validateFormats: (_v = o.validateFormats) !== null && _v !== void 0 ? _v : true,
+            unicodeRegExp: (_w = o.unicodeRegExp) !== null && _w !== void 0 ? _w : true,
         };
     }
     class Ajv$1 {
@@ -4264,13 +4270,19 @@
             this.addKeyword("$async");
         }
         _addDefaultMetaSchema() {
-            const { $data, meta } = this.opts;
+            const { $data, meta, schemaId } = this.opts;
+            let _dataRefSchema = $dataRefSchema;
+            if (schemaId === "id") {
+                _dataRefSchema = { ...$dataRefSchema };
+                _dataRefSchema.id = _dataRefSchema.$id;
+                delete _dataRefSchema.$id;
+            }
             if (meta && $data)
-                this.addMetaSchema($dataRefSchema, $id, false);
+                this.addMetaSchema(_dataRefSchema, _dataRefSchema[schemaId], false);
         }
         defaultMeta() {
-            const { meta } = this.opts;
-            return (this.opts.defaultMeta = typeof meta == "object" ? meta.$id || meta : undefined);
+            const { meta, schemaId } = this.opts;
+            return (this.opts.defaultMeta = typeof meta == "object" ? meta[schemaId] || meta : undefined);
         }
         validate(schemaKeyRef, // key, ref or schema object
         data // to be validated
@@ -4358,9 +4370,11 @@
             }
             let id;
             if (typeof schema === "object") {
-                id = schema.$id;
-                if (id !== undefined && typeof id != "string")
-                    throw new Error("schema $id must be string");
+                const { schemaId } = this.opts;
+                id = schema[schemaId];
+                if (id !== undefined && typeof id != "string") {
+                    throw new Error(`schema ${schemaId} must be string`);
+                }
             }
             key = normalizeId(key || id);
             this._checkUnique(key);
@@ -4407,7 +4421,8 @@
             while (typeof (sch = getSchEnv.call(this, keyRef)) == "string")
                 keyRef = sch;
             if (sch === undefined) {
-                const root = new SchemaEnv({ schema: {} });
+                const { schemaId } = this.opts;
+                const root = new SchemaEnv({ schema: {}, schemaId });
                 sch = resolveSchema.call(this, root, keyRef);
                 if (!sch)
                     return;
@@ -4442,7 +4457,7 @@
                 case "object": {
                     const cacheKey = schemaKeyRef;
                     this._cache.delete(cacheKey);
-                    let id = schemaKeyRef.$id;
+                    let id = schemaKeyRef[this.opts.schemaId];
                     if (id) {
                         id = normalizeId(id);
                         delete this.schemas[id];
@@ -4565,8 +4580,9 @@
         }
         _addSchema(schema, meta, baseId, validateSchema = this.opts.validateSchema, addSchema = this.opts.addUsedSchema) {
             let id;
+            const { schemaId } = this.opts;
             if (typeof schema == "object") {
-                id = schema.$id;
+                id = schema[schemaId];
             }
             else {
                 if (this.opts.jtd)
@@ -4579,7 +4595,7 @@
                 return sch;
             const localRefs = getSchemaRefs.call(this, schema);
             baseId = normalizeId(id || baseId);
-            sch = new SchemaEnv({ schema, meta, baseId, localRefs });
+            sch = new SchemaEnv({ schema, schemaId, meta, baseId, localRefs });
             this._cache.set(sch.schema, sch);
             if (addSchema && !baseId.startsWith("#")) {
                 // TODO atm it is allowed to overwrite schemas without id (instead of not adding them)
