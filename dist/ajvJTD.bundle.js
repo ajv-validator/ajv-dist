@@ -1796,6 +1796,8 @@
         subschema.jtdMetadata = jtdMetadata; // not inherited
     }
 
+    var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+
     // do not edit .js files directly - edit src/index.jst
 
 
@@ -1845,16 +1847,9 @@
         'default': fastDeepEqual
     }));
 
-    var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+    var jsonSchemaTraverse$1 = {exports: {}};
 
-    function createCommonjsModule(fn) {
-      var module = { exports: {} };
-    	return fn(module, module.exports), module.exports;
-    }
-
-    var jsonSchemaTraverse = createCommonjsModule(function (module) {
-
-    var traverse = module.exports = function (schema, opts, cb) {
+    var traverse = jsonSchemaTraverse$1.exports = function (schema, opts, cb) {
       // Legacy support for v0.3.1 and earlier.
       if (typeof opts == 'function') {
         cb = opts;
@@ -1945,15 +1940,18 @@
     function escapeJsonPtr(str) {
       return str.replace(/~/g, '~0').replace(/\//g, '~1');
     }
-    });
 
-    var traverse = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.assign(/*#__PURE__*/Object.create(null), jsonSchemaTraverse, {
+    var jsonSchemaTraverse = jsonSchemaTraverse$1.exports;
+
+    var traverse$1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.assign(/*#__PURE__*/Object.create(null), jsonSchemaTraverse$1.exports, {
         'default': jsonSchemaTraverse
     }));
 
+    var uri_all = {exports: {}};
+
     /** @license URI.js v4.4.1 (c) 2011 Gary Court. License: http://github.com/garycourt/uri-js */
 
-    var uri_all = createCommonjsModule(function (module, exports) {
+    (function (module, exports) {
     (function (global, factory) {
     	factory(exports) ;
     }(commonjsGlobal, (function (exports) {
@@ -3354,17 +3352,17 @@
     Object.defineProperty(exports, '__esModule', { value: true });
 
     })));
-    //# sourceMappingURL=uri.all.js.map
-    });
+
+    }(uri_all, uri_all.exports));
 
     function getFullPath(id = "", normalize) {
         if (normalize !== false)
             id = normalizeId(id);
-        const p = uri_all.parse(id);
+        const p = uri_all.exports.parse(id);
         return _getFullPath(p);
     }
     function _getFullPath(p) {
-        return uri_all.serialize(p).split("#")[0] + "#";
+        return uri_all.exports.serialize(p).split("#")[0] + "#";
     }
     const TRAILING_SLASH_HASH = /#\/?$/;
     function normalizeId(id) {
@@ -3372,7 +3370,7 @@
     }
     function resolveUrl(baseId, id) {
         id = normalizeId(id);
-        return uri_all.resolve(baseId, id);
+        return uri_all.exports.resolve(baseId, id);
     }
     const ANCHOR = /^[a-z_][-a-z0-9._]*$/i;
     function getSchemaRefs(schema) {
@@ -3384,7 +3382,7 @@
         const pathPrefix = getFullPath(schId, false);
         const localRefs = {};
         const schemaRefs = new Set();
-        traverse(schema, { allKeys: true }, (sch, jsonPtr, _, parentJsonPtr) => {
+        traverse$1(schema, { allKeys: true }, (sch, jsonPtr, _, parentJsonPtr) => {
             if (parentJsonPtr === undefined)
                 return;
             const fullPath = pathPrefix + jsonPtr;
@@ -3395,7 +3393,7 @@
             addAnchor.call(this, sch.$dynamicAnchor);
             baseIds[jsonPtr] = baseId;
             function addRef(ref) {
-                ref = normalizeId(baseId ? uri_all.resolve(baseId, ref) : ref);
+                ref = normalizeId(baseId ? uri_all.exports.resolve(baseId, ref) : ref);
                 if (schemaRefs.has(ref))
                     throw ambiguos(ref);
                 schemaRefs.add(ref);
@@ -4067,7 +4065,7 @@
     function resolveSchema(root, // root object with properties schema, refs TODO below SchemaEnv is assigned to it
     ref // reference to resolve
     ) {
-        const p = uri_all.parse(ref);
+        const p = uri_all.exports.parse(ref);
         const refPath = _getFullPath(p);
         let baseId = getFullPath(root.baseId);
         // TODO `Object.keys(root.schema).length > 0` should not be needed - but removing breaks 2 tests
@@ -4214,7 +4212,7 @@
     const MAX_EXPRESSION = 200;
     // eslint-disable-next-line complexity
     function requiredOptions(o) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
         const s = o.strict;
         const _optz = (_a = o.code) === null || _a === void 0 ? void 0 : _a.optimize;
         const optimize = _optz === true || _optz === undefined ? 1 : _optz || 0;
@@ -4235,6 +4233,7 @@
             validateSchema: (_u = o.validateSchema) !== null && _u !== void 0 ? _u : true,
             validateFormats: (_v = o.validateFormats) !== null && _v !== void 0 ? _v : true,
             unicodeRegExp: (_w = o.unicodeRegExp) !== null && _w !== void 0 ? _w : true,
+            int32range: (_x = o.int32range) !== null && _x !== void 0 ? _x : true,
         };
     }
     class Ajv$1 {
@@ -4985,7 +4984,7 @@
         error: error$3,
         code(cxt) {
             checkMetadata(cxt);
-            const { data, schema, parentSchema } = cxt;
+            const { data, schema, parentSchema, it } = cxt;
             let cond;
             switch (schema) {
                 case "boolean":
@@ -5001,8 +5000,16 @@
                     cond = _ `typeof ${data} == "number"`;
                     break;
                 default: {
-                    const [min, max] = intRange[schema];
-                    cond = _ `typeof ${data} == "number" && isFinite(${data}) && ${data} >= ${min} && ${data} <= ${max} && !(${data} % 1)`;
+                    const sch = schema;
+                    cond = _ `typeof ${data} == "number" && isFinite(${data}) && !(${data} % 1)`;
+                    if (!it.opts.int32range && (sch === "int32" || sch === "uint32")) {
+                        if (sch === "uint32")
+                            cond = _ `${cond} && ${data} >= 0`;
+                    }
+                    else {
+                        const [min, max] = intRange[sch];
+                        cond = _ `${cond} && ${data} >= ${min} && ${data} <= ${max}`;
+                    }
                 }
             }
             cxt.pass(parentSchema.nullable ? or(_ `${data} === null`, cond) : cond);
@@ -6123,9 +6130,18 @@
                 parseNumber(cxt);
                 break;
             default: {
-                const [min, max, maxDigits] = intRange[schema.type];
-                parseNumber(cxt, maxDigits);
-                gen.if(_ `${data} < ${min} || ${data} > ${max}`, () => parsingError(cxt, str `integer out of range`));
+                const t = schema.type;
+                if (!self.opts.int32range && (t === "int32" || t === "uint32")) {
+                    parseNumber(cxt, 16); // 2 ** 53 - max safe integer
+                    if (t === "uint32") {
+                        gen.if(_ `${data} < 0`, () => parsingError(cxt, str `integer out of range`));
+                    }
+                }
+                else {
+                    const [min, max, maxDigits] = intRange[t];
+                    parseNumber(cxt, maxDigits);
+                    gen.if(_ `${data} < ${min} || ${data} > ${max}`, () => parsingError(cxt, str `integer out of range`));
+                }
             }
         }
     }
