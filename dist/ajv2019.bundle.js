@@ -3813,7 +3813,10 @@
             }
         }
         result(condition, successAction, failAction) {
-            this.gen.if(not(condition));
+            this.failResult(not(condition), successAction, failAction);
+        }
+        failResult(condition, successAction, failAction) {
+            this.gen.if(condition);
             if (failAction)
                 failAction();
             else
@@ -3832,7 +3835,7 @@
             }
         }
         pass(condition, failAction) {
-            this.result(condition, undefined, failAction);
+            this.failResult(not(condition), undefined, failAction);
         }
         fail(condition) {
             if (condition === undefined) {
@@ -5910,7 +5913,7 @@
                 createErrors: false,
                 allErrors: false,
             }, valid);
-            cxt.result(valid, () => cxt.error(), () => cxt.reset());
+            cxt.failResult(valid, () => cxt.reset(), () => cxt.error());
         },
         error: { message: "must NOT be valid" },
     };
