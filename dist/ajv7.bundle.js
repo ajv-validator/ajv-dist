@@ -2,7 +2,22 @@
     typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
     typeof define === 'function' && define.amd ? define(['exports'], factory) :
     (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.av7 = {}));
-}(this, (function (exports) { 'use strict';
+})(this, (function (exports) { 'use strict';
+
+    function _mergeNamespaces(n, m) {
+        m.forEach(function (e) {
+            e && typeof e !== 'string' && !Array.isArray(e) && Object.keys(e).forEach(function (k) {
+                if (k !== 'default' && !(k in n)) {
+                    var d = Object.getOwnPropertyDescriptor(e, k);
+                    Object.defineProperty(n, k, d.get ? d : {
+                        enumerable: true,
+                        get: function () { return e[k]; }
+                    });
+                }
+            });
+        });
+        return Object.freeze(n);
+    }
 
     class _CodeOrName {
     }
@@ -1129,7 +1144,7 @@
     };
 
     const keywordError = {
-        message: ({ keyword }) => str `should pass "${keyword}" keyword validation`,
+        message: ({ keyword }) => str `must pass "${keyword}" keyword validation`,
     };
     const keyword$DataError = {
         message: ({ keyword, schemaType }) => schemaType
@@ -1872,9 +1887,10 @@
       return a!==a && b!==b;
     };
 
-    var equal = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.assign(/*#__PURE__*/Object.create(null), fastDeepEqual, {
+    var equal = /*#__PURE__*/Object.freeze(/*#__PURE__*/_mergeNamespaces({
+        __proto__: null,
         'default': fastDeepEqual
-    }));
+    }, [fastDeepEqual]));
 
     var jsonSchemaTraverse$1 = {exports: {}};
 
@@ -1972,9 +1988,10 @@
 
     var jsonSchemaTraverse = jsonSchemaTraverse$1.exports;
 
-    var traverse$1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.assign(/*#__PURE__*/Object.create(null), jsonSchemaTraverse$1.exports, {
+    var traverse$1 = /*#__PURE__*/Object.freeze(/*#__PURE__*/_mergeNamespaces({
+        __proto__: null,
         'default': jsonSchemaTraverse
-    }));
+    }, [jsonSchemaTraverse$1.exports]));
 
     var uri_all = {exports: {}};
 
@@ -3465,11 +3482,11 @@
         return uri_all.exports.resolve(baseId, id);
     }
     const ANCHOR = /^[a-z_][-a-z0-9._]*$/i;
-    function getSchemaRefs(schema) {
+    function getSchemaRefs(schema, baseId) {
         if (typeof schema == "boolean")
             return {};
         const { schemaId } = this.opts;
-        const schId = normalizeId(schema[schemaId]);
+        const schId = normalizeId(schema[schemaId] || baseId);
         const baseIds = { "": schId };
         const pathPrefix = getFullPath(schId, false);
         const localRefs = {};
@@ -4233,13 +4250,14 @@
         if (((_a = parsedRef.fragment) === null || _a === void 0 ? void 0 : _a[0]) !== "/")
             return;
         for (const part of parsedRef.fragment.slice(1).split("/")) {
-            if (typeof schema == "boolean")
+            if (typeof schema === "boolean")
                 return;
-            schema = schema[unescapeFragment(part)];
-            if (schema === undefined)
+            const partSchema = schema[unescapeFragment(part)];
+            if (partSchema === undefined)
                 return;
+            schema = partSchema;
             // TODO PREVENT_SCOPE_CHANGE could be defined in keyword def?
-            const schId = typeof schema == "object" && schema[this.opts.schemaId];
+            const schId = typeof schema === "object" && schema[this.opts.schemaId];
             if (!PREVENT_SCOPE_CHANGE.has(part) && schId) {
                 baseId = resolveUrl(baseId, schId);
             }
@@ -4719,8 +4737,8 @@
             let sch = this._cache.get(schema);
             if (sch !== undefined)
                 return sch;
-            const localRefs = getSchemaRefs.call(this, schema);
             baseId = normalizeId(id || baseId);
+            const localRefs = getSchemaRefs.call(this, schema, baseId);
             sch = new SchemaEnv({ schema, schemaId, meta, baseId, localRefs });
             this._cache.set(sch.schema, sch);
             if (addSchema && !baseId.startsWith("#")) {
@@ -5541,11 +5559,19 @@
             }
             else {
                 gen.let(valid, false);
+                if (min === 0) {
+                    gen.if(_ `${data}.length > 0`, validateItemsWithCount, () => gen.assign(valid, true));
+                }
+                else {
+                    validateItemsWithCount();
+                }
+            }
+            cxt.result(valid, () => cxt.reset());
+            function validateItemsWithCount() {
                 const schValid = gen.name("_valid");
                 const count = gen.let("count", 0);
                 validateItems(schValid, () => gen.if(schValid, () => checkLimits(count)));
             }
-            cxt.result(valid, () => cxt.reset());
             function validateItems(_valid, block) {
                 gen.forRange("i", 0, len, (i) => {
                     cxt.subschema({
@@ -6597,11 +6623,11 @@
     exports.KeywordCxt = KeywordCxt;
     exports.Name = Name;
     exports._ = _;
-    exports.default = Ajv;
+    exports["default"] = Ajv;
     exports.nil = nil;
     exports.str = str;
     exports.stringify = stringify;
 
     Object.defineProperty(exports, '__esModule', { value: true });
 
-})));
+}));
