@@ -1,7 +1,7 @@
 (function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.ajv7 = f()}})(function(){var define,module,exports;return (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.regexpCode = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
+exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
 class _CodeOrName {
 }
 exports._CodeOrName = _CodeOrName;
@@ -141,6 +141,14 @@ function getProperty(key) {
     return typeof key == "string" && exports.IDENTIFIER.test(key) ? new _Code(`.${key}`) : _ `[${key}]`;
 }
 exports.getProperty = getProperty;
+//Does best effort to format the name properly
+function getEsmExportName(key) {
+    if (typeof key == "string" && exports.IDENTIFIER.test(key)) {
+        return new _Code(`${key}`);
+    }
+    throw new Error(`CodeGen: invalid export name: ${key}, use explicit $id name mapping`);
+}
+exports.getEsmExportName = getEsmExportName;
 function regexpCode(rx) {
     return new _Code(rx.toString());
 }
@@ -4759,6 +4767,8 @@ exports.default = def;
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
 const types_1 = require("../discriminator/types");
+const compile_1 = require("../../compile");
+const util_1 = require("../../compile/util");
 const error = {
     message: ({ params: { discrError, tagName } }) => discrError === types_1.DiscrError.Tag
         ? `tag "${tagName}" must be string`
@@ -4810,10 +4820,15 @@ const def = {
             const topRequired = hasRequired(parentSchema);
             let tagRequired = true;
             for (let i = 0; i < oneOf.length; i++) {
-                const sch = oneOf[i];
-                const propSch = (_a = sch.properties) === null || _a === void 0 ? void 0 : _a[tagName];
+                let sch = oneOf[i];
+                if ((sch === null || sch === void 0 ? void 0 : sch.$ref) && !(0, util_1.schemaHasRulesButRef)(sch, it.self.RULES)) {
+                    sch = compile_1.resolveRef.call(it.self, it.schemaEnv, it.baseId, sch === null || sch === void 0 ? void 0 : sch.$ref);
+                    if (sch instanceof compile_1.SchemaEnv)
+                        sch = sch.schema;
+                }
+                const propSch = (_a = sch === null || sch === void 0 ? void 0 : sch.properties) === null || _a === void 0 ? void 0 : _a[tagName];
                 if (typeof propSch != "object") {
-                    throw new Error(`discriminator: oneOf schemas must have "properties/${tagName}"`);
+                    throw new Error(`discriminator: oneOf subschemas (or referenced schemas) must have "properties/${tagName}"`);
                 }
                 tagRequired = tagRequired && (topRequired || hasRequired(sch));
                 addMappings(propSch, i);
@@ -4848,7 +4863,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":2,"../discriminator/types":46}],46:[function(require,module,exports){
+},{"../../compile":5,"../../compile/codegen":2,"../../compile/util":10,"../discriminator/types":46}],46:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DiscrError = void 0;
