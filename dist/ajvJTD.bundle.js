@@ -6870,7 +6870,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
 },{}],"jtd":[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
+exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
 const core_1 = require("./core");
 const jtd_1 = require("./vocabularies/jtd");
 const jtd_schema_1 = require("./refs/jtd-schema");
@@ -6933,6 +6933,10 @@ Object.defineProperty(exports, "stringify", { enumerable: true, get: function ()
 Object.defineProperty(exports, "nil", { enumerable: true, get: function () { return codegen_1.nil; } });
 Object.defineProperty(exports, "Name", { enumerable: true, get: function () { return codegen_1.Name; } });
 Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function () { return codegen_1.CodeGen; } });
+var validation_error_1 = require("./runtime/validation_error");
+Object.defineProperty(exports, "ValidationError", { enumerable: true, get: function () { return validation_error_1.default; } });
+var ref_error_1 = require("./compile/ref_error");
+Object.defineProperty(exports, "MissingRefError", { enumerable: true, get: function () { return ref_error_1.default; } });
 
-},{"./compile/codegen":2,"./compile/jtd/parse":6,"./compile/jtd/serialize":7,"./compile/validate":18,"./core":21,"./refs/jtd-schema":23,"./vocabularies/jtd":36}]},{},[])("jtd")
+},{"./compile/codegen":2,"./compile/jtd/parse":6,"./compile/jtd/serialize":7,"./compile/ref_error":10,"./compile/validate":18,"./core":21,"./refs/jtd-schema":23,"./runtime/validation_error":28,"./vocabularies/jtd":36}]},{},[])("jtd")
 });

@@ -7507,7 +7507,7 @@ Object.defineProperty(exports, '__esModule', { value: true });
 },{}],"2019":[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
+exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
 const core_1 = require("./core");
 const draft7_1 = require("./vocabularies/draft7");
 const dynamic_1 = require("./vocabularies/dynamic");
@@ -7559,6 +7559,10 @@ Object.defineProperty(exports, "stringify", { enumerable: true, get: function ()
 Object.defineProperty(exports, "nil", { enumerable: true, get: function () { return codegen_1.nil; } });
 Object.defineProperty(exports, "Name", { enumerable: true, get: function () { return codegen_1.Name; } });
 Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function () { return codegen_1.CodeGen; } });
+var validation_error_1 = require("./runtime/validation_error");
+Object.defineProperty(exports, "ValidationError", { enumerable: true, get: function () { return validation_error_1.default; } });
+var ref_error_1 = require("./compile/ref_error");
+Object.defineProperty(exports, "MissingRefError", { enumerable: true, get: function () { return ref_error_1.default; } });
 
-},{"./compile/codegen":2,"./compile/validate":15,"./core":18,"./refs/json-schema-2019-09":20,"./vocabularies/discriminator":54,"./vocabularies/draft7":56,"./vocabularies/dynamic":59,"./vocabularies/next":65,"./vocabularies/unevaluated":66}]},{},[])("2019")
+},{"./compile/codegen":2,"./compile/ref_error":7,"./compile/validate":15,"./core":18,"./refs/json-schema-2019-09":20,"./runtime/validation_error":31,"./vocabularies/discriminator":54,"./vocabularies/draft7":56,"./vocabularies/dynamic":59,"./vocabularies/next":65,"./vocabularies/unevaluated":66}]},{},[])("2019")
 });
