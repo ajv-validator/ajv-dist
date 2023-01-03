@@ -1851,15 +1851,25 @@ function serializeSchemaProperties(cxt, discriminator) {
     const optProps = keys(optionalProperties);
     const allProps = allProperties(props.concat(optProps));
     let first = !discriminator;
+    let firstProp;
     for (const key of props) {
+        if (first)
+            first = false;
+        else
+            gen.add(names_1.default.json, (0, codegen_1.str) `,`);
         serializeProperty(key, properties[key], keyValue(key));
     }
+    if (first)
+        firstProp = gen.let("first", true);
     for (const key of optProps) {
         const value = keyValue(key);
-        gen.if((0, codegen_1.and)((0, codegen_1._) `${value} !== undefined`, (0, code_1.isOwnProperty)(gen, data, key)), () => serializeProperty(key, optionalProperties[key], value));
+        gen.if((0, codegen_1.and)((0, codegen_1._) `${value} !== undefined`, (0, code_1.isOwnProperty)(gen, data, key)), () => {
+            addComma(cxt, firstProp);
+            serializeProperty(key, optionalProperties[key], value);
+        });
     }
     if (schema.additionalProperties) {
-        gen.forIn("key", data, (key) => gen.if(isAdditional(key, allProps), () => serializeKeyValue(cxt, key, {}, gen.let("first", first))));
+        gen.forIn("key", data, (key) => gen.if(isAdditional(key, allProps), () => serializeKeyValue(cxt, key, {}, firstProp)));
     }
     function keys(ps) {
         return ps ? Object.keys(ps) : [];
@@ -1876,10 +1886,6 @@ function serializeSchemaProperties(cxt, discriminator) {
         return gen.const("value", (0, codegen_1._) `${data}${(0, codegen_1.getProperty)(key)}`);
     }
     function serializeProperty(key, propSchema, value) {
-        if (first)
-            first = false;
-        else
-            gen.add(names_1.default.json, (0, codegen_1.str) `,`);
         gen.add(names_1.default.json, (0, codegen_1.str) `${JSON.stringify(key)}:`);
         serializeCode({ ...cxt, schema: propSchema, data: value });
     }
@@ -1930,7 +1936,12 @@ function serializeEmpty({ gen, data }) {
     gen.add(names_1.default.json, (0, codegen_1._) `JSON.stringify(${data})`);
 }
 function addComma({ gen }, first) {
-    gen.if(first, () => gen.assign(first, false), () => gen.add(names_1.default.json, (0, codegen_1.str) `,`));
+    if (first) {
+        gen.if(first, () => gen.assign(first, false), () => gen.add(names_1.default.json, (0, codegen_1.str) `,`));
+    }
+    else {
+        gen.add(names_1.default.json, (0, codegen_1.str) `,`);
+    }
 }
 
 },{"..":5,"../../runtime/quote":25,"../../vocabularies/code":29,"../../vocabularies/jtd/ref":41,"../codegen":2,"../names":9,"../ref_error":10,"../util":13,"./types":8}],8:[function(require,module,exports){
@@ -2909,7 +2920,7 @@ function checkContextTypes(it, types) {
             strictTypesError(it, `type "${t}" not allowed by context "${it.dataTypes.join(",")}"`);
         }
     });
-    it.dataTypes = it.dataTypes.filter((t) => includesType(types, t));
+    narrowSchemaTypes(it, types);
 }
 function checkMultipleTypes(it, ts) {
     if (ts.length > 1 && !(ts.length === 2 && ts.includes("null"))) {
@@ -2933,6 +2944,16 @@ function hasApplicableType(schTs, kwdT) {
 }
 function includesType(ts, t) {
     return ts.includes(t) || (t === "integer" && ts.includes("number"));
+}
+function narrowSchemaTypes(it, withTypes) {
+    const ts = [];
+    for (const t of it.dataTypes) {
+        if (includesType(withTypes, t))
+            ts.push(t);
+        else if (withTypes.includes("integer") && t === "number")
+            ts.push("integer");
+    }
+    it.dataTypes = ts;
 }
 function strictTypesError(it, msg) {
     const schemaPath = it.schemaEnv.baseId + it.errSchemaPath;
@@ -5044,8 +5065,7 @@ function validateProperties(cxt) {
     }
     function validateAdditional() {
         gen.forIn("key", data, (key) => {
-            const _allProps = it.jtdDiscriminator === undefined ? allProps : [it.jtdDiscriminator].concat(allProps);
-            const addProp = isAdditional(key, _allProps, "properties");
+            const addProp = isAdditional(key, allProps, "properties", it.jtdDiscriminator);
             const addOptProp = isAdditional(key, allOptProps, "optionalProperties");
             const extra = addProp === true ? addOptProp : addOptProp === true ? addProp : (0, codegen_1.and)(addProp, addOptProp);
             gen.if(extra, () => {
@@ -5060,15 +5080,19 @@ function validateProperties(cxt) {
             });
         });
     }
-    function isAdditional(key, props, keyword) {
+    function isAdditional(key, props, keyword, jtdDiscriminator) {
         let additional;
         if (props.length > 8) {
             // TODO maybe an option instead of hard-coded 8?
             const propsSchema = (0, util_1.schemaRefOrVal)(it, parentSchema[keyword], keyword);
             additional = (0, codegen_1.not)((0, code_1.isOwnProperty)(gen, propsSchema, key));
+            if (jtdDiscriminator !== undefined) {
+                additional = (0, codegen_1.and)(additional, (0, codegen_1._) `${key} !== ${jtdDiscriminator}`);
+            }
         }
-        else if (props.length) {
-            additional = (0, codegen_1.and)(...props.map((p) => (0, codegen_1._) `${key} !== ${p}`));
+        else if (props.length || jtdDiscriminator !== undefined) {
+            const ps = jtdDiscriminator === undefined ? props : [jtdDiscriminator].concat(props);
+            additional = (0, codegen_1.and)(...ps.map((p) => (0, codegen_1._) `${key} !== ${p}`));
         }
         else {
             additional = true;
@@ -5245,14 +5269,17 @@ const def = {
     code(cxt) {
         (0, metadata_1.checkMetadata)(cxt);
         const { gen, data, schema, it } = cxt;
-        if ((0, util_1.alwaysValidSchema)(it, schema))
-            return;
         const [valid, cond] = (0, nullable_1.checkNullableObject)(cxt, data);
-        gen.if(cond);
-        gen.assign(valid, validateMap());
-        gen.elseIf((0, codegen_1.not)(valid));
-        cxt.error();
-        gen.endIf();
+        if ((0, util_1.alwaysValidSchema)(it, schema)) {
+            gen.if((0, codegen_1.not)((0, codegen_1.or)(cond, valid)), () => cxt.error());
+        }
+        else {
+            gen.if(cond);
+            gen.assign(valid, validateMap());
+            gen.elseIf((0, codegen_1.not)(valid));
+            cxt.error();
+            gen.endIf();
+        }
         cxt.ok(valid);
         function validateMap() {
             const _valid = gen.name("valid");
