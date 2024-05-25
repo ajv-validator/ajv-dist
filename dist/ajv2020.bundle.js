@@ -5024,6 +5024,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
 const types_1 = require("../discriminator/types");
 const compile_1 = require("../../compile");
+const ref_error_1 = require("../../compile/ref_error");
 const util_1 = require("../../compile/util");
 const error = {
     message: ({ params: { discrError, tagName } }) => discrError === types_1.DiscrError.Tag
@@ -5078,9 +5079,12 @@ const def = {
             for (let i = 0; i < oneOf.length; i++) {
                 let sch = oneOf[i];
                 if ((sch === null || sch === void 0 ? void 0 : sch.$ref) && !(0, util_1.schemaHasRulesButRef)(sch, it.self.RULES)) {
-                    sch = compile_1.resolveRef.call(it.self, it.schemaEnv.root, it.baseId, sch === null || sch === void 0 ? void 0 : sch.$ref);
+                    const ref = sch.$ref;
+                    sch = compile_1.resolveRef.call(it.self, it.schemaEnv.root, it.baseId, ref);
                     if (sch instanceof compile_1.SchemaEnv)
                         sch = sch.schema;
+                    if (sch === undefined)
+                        throw new ref_error_1.default(it.opts.uriResolver, it.baseId, ref);
                 }
                 const propSch = (_a = sch === null || sch === void 0 ? void 0 : sch.properties) === null || _a === void 0 ? void 0 : _a[tagName];
                 if (typeof propSch != "object") {
@@ -5119,7 +5123,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile":5,"../../compile/codegen":2,"../../compile/util":10,"../discriminator/types":56}],56:[function(require,module,exports){
+},{"../../compile":5,"../../compile/codegen":2,"../../compile/ref_error":7,"../../compile/util":10,"../discriminator/types":56}],56:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DiscrError = void 0;
